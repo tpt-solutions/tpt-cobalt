@@ -1,0 +1,15 @@
+[package]
+name = "tpt-uir-text"
+version = "0.1.0"
+edition = "2021"
+description = "Textual (human-readable) format for TPT-UIR"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+repository = "https://github.com/tpt-solutions/tpt-uir"
+homepage = "https://github.com/tpt-solutions/tpt-uir"
+documentation = "https://docs.rs/tpt-uir-text"
+keywords = ["uir", "ir", "text", "parser", "serialization"]
+categories = ["parsing", "compilers"]
+
+[dependencies]
+tpt-uir-core = { path = "../tpt-uir-core", version = "0.1.0" }

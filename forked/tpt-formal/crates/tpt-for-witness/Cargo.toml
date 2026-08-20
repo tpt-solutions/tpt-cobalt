@@ -1,0 +1,29 @@
+[package]
+name = "tpt-for-witness"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+description = "Witness types: values carrying compile-time proof that a predicate holds."
+
+readme = "README.md"
+keywords = ["witness", "proof", "phantom-type", "type-level", "dependent-types"]
+categories = ["rust-patterns", "no-std"]
+
+[dependencies]
+tpt-for-typestate = { path = "../tpt-for-typestate", version = "0.1.0" }
+
+[features]
+default = ["std"]
+std = []
+alloc = []
+
+[lints]
+rust = { unsafe_op_in_unsafe_fn = "warn" }
+clippy = { all = "warn" }
+
+[[example]]
+name = "witness_basic"
+path = "examples/composed_witnesses.rs"
+

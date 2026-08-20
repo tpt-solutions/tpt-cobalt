@@ -1,0 +1,81 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/tpt-fem",
+    "crates/tpt-fem-assembly",
+    "crates/tpt-fem-composite",
+    "crates/tpt-fem-contact",
+    "crates/tpt-fem-coupling",
+    "crates/tpt-fem-dofmap",
+    "crates/tpt-fem-dynamic",
+    "crates/tpt-fem-eigen",
+    "crates/tpt-fem-elasticity",
+    "crates/tpt-fem-element",
+    "crates/tpt-fem-fluid",
+    "crates/tpt-fem-hyperelastic",
+    "crates/tpt-fem-io-abaqus",
+    "crates/tpt-fem-io-exodus",
+    "crates/tpt-fem-io-vtk",
+    "crates/tpt-fem-mesh",
+    "crates/tpt-fem-mesh-gen",
+    "crates/tpt-fem-plasticity",
+    "crates/tpt-fem-porous",
+    "crates/tpt-fem-quadrature",
+    "crates/tpt-fem-solve",
+    "crates/tpt-fem-sparse",
+    "crates/tpt-fem-thermal",
+]
+exclude = ["fuzz", "crates/tpt-fem-py"]
+
+[workspace.package]
+description = "tpt-fem — mesh-based finite element method core for tpt-solutions"
+authors = ["TPT Solutions"]
+edition = "2021"
+rust-version = "1.75"
+license = "MIT OR Apache-2.0"
+homepage = "https://github.com/tpt-solutions/tpt-fem"
+repository = "https://github.com/tpt-solutions/tpt-fem"
+
+[workspace.dependencies]
+tpt-fem-quadrature = { version = "0.1.0", path = "crates/tpt-fem-quadrature" }
+tpt-fem-element = { version = "0.1.0", path = "crates/tpt-fem-element" }
+tpt-fem-mesh = { version = "0.1.0", path = "crates/tpt-fem-mesh" }
+tpt-fem-sparse = { version = "0.1.0", path = "crates/tpt-fem-sparse" }
+tpt-fem-assembly = { version = "0.1.0", path = "crates/tpt-fem-assembly" }
+tpt-fem-thermal = { version = "0.1.0", path = "crates/tpt-fem-thermal" }
+tpt-fem-io-vtk = { version = "0.1.0", path = "crates/tpt-fem-io-vtk" }
+tpt-fem-elasticity = { version = "0.1.0", path = "crates/tpt-fem-elasticity" }
+tpt-fem-solve = { version = "0.1.0", path = "crates/tpt-fem-solve" }
+tpt-fem-eigen = { version = "0.1.0", path = "crates/tpt-fem-eigen" }
+tpt-fem-io-abaqus = { version = "0.1.0", path = "crates/tpt-fem-io-abaqus" }
+tpt-fem-io-exodus = { version = "0.1.0", path = "crates/tpt-fem-io-exodus" }
+tpt-fem-mesh-gen = { version = "0.1.0", path = "crates/tpt-fem-mesh-gen" }
+tpt-fem = { version = "0.1.0", path = "crates/tpt-fem" }
+tpt-fem-dofmap = { version = "0.1.0", path = "crates/tpt-fem-dofmap" }
+tpt-fem-dynamic = { version = "0.1.0", path = "crates/tpt-fem-dynamic" }
+tpt-fem-plasticity = { version = "0.1.0", path = "crates/tpt-fem-plasticity" }
+tpt-fem-hyperelastic = { version = "0.1.0", path = "crates/tpt-fem-hyperelastic" }
+tpt-fem-composite = { version = "0.1.0", path = "crates/tpt-fem-composite" }
+tpt-fem-porous = { version = "0.1.0", path = "crates/tpt-fem-porous" }
+tpt-fem-contact = { version = "0.1.0", path = "crates/tpt-fem-contact" }
+tpt-fem-fluid = { version = "0.1.0", path = "crates/tpt-fem-fluid" }
+tpt-fem-coupling = { version = "0.1.0", path = "crates/tpt-fem-coupling" }
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+# High-precision quadrature coefficients intentionally carry full f64 precision.
+excessive_precision = "allow"
+# Index loops over small, fixed-size reference-element matrices are idiomatic here.
+needless_range_loop = "allow"
+# Physics solvers (time integration, FSI) legitimately take many parameters.
+too_many_arguments = "allow"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+strip = "symbols"
+overflow-checks = true

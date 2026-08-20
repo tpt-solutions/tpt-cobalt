@@ -1,0 +1,32 @@
+[package]
+name = "tpt-sci-ppl"
+description = "Probabilistic programming model/DSL and NUTS sampler for the tpt-science pillar (built from scratch)"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+repository = "https://github.com/tpt-solutions/tpt-science"
+homepage = "https://github.com/tpt-solutions/tpt-science"
+readme = "README.md"
+documentation = "https://docs.rs/tpt-sci-ppl"
+keywords = ["probabilistic-programming", "bayesian", "nuts", "mcmc", "science"]
+categories = ["science", "simulation", "mathematics"]
+publish = false
+
+[dependencies]
+tpt-math-linalg = { version = "0.1.0" }
+tpt-math-autodiff-rev = { version = "0.1.0" }
+tpt-math-prob-bayes = { version = "0.1.0" }
+tpt-math-prob-core = { version = "0.1.0" }
+thiserror = { version = "2" }
+
+[dev-dependencies]
+approx = { version = "0.5" }
+
+[lints]
+rust = { unsafe_op_in_unsafe_fn = "warn", unsafe_code = "allow" }
+clippy = { all = "warn", missing_errors_doc = "warn", missing_panics_doc = "warn" }
+
+[package.metadata.docs.rs]
+all-features = true

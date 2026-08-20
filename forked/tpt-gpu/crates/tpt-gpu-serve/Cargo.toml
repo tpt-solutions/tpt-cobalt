@@ -1,0 +1,18 @@
+[package]
+name = "tpt-gpu-serve"
+version = "0.1.0"
+edition = "2021"
+authors = ["TPT Solutions"]
+description = "tpt-serve — OpenAI-compatible HTTP server for TPT GPU LLM inference"
+license = "MIT OR Apache-2.0 WITH LLVM-exception"
+repository = "https://github.com/tpt-solutions/tpt-gpu"
+keywords = ["gpu", "llm", "inference", "openai", "server"]
+categories = ["command-line-utilities"]
+
+[[bin]]
+name = "tpt-serve"
+path = "src/main.rs"
+
+[dependencies]
+tpt-gpu-runtime = { path = "../tpt-gpu-runtime", version = "0.1.0" }
+serde_json = { workspace = true }

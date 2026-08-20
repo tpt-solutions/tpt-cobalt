@@ -1,0 +1,26 @@
+[package]
+name = "tpt-math-linalg-fixed"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.84"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+description = "Const-generic fixed-size (stack-allocated) linear algebra. No allocator."
+readme = "README.md"
+repository = "https://github.com/tpt-solutions/tpt-math"
+homepage = "https://github.com/tpt-solutions/tpt-math"
+documentation = "https://docs.rs/tpt-math-linalg-fixed"
+keywords = ["linear-algebra", "matrix", "vector", "const-generic", "no-std"]
+categories = ["mathematics", "science", "algorithms", "no-std"]
+
+[dependencies]
+tpt-math-numeric = { path = "../tpt-math-numeric", version = "0.1.0", default-features = false }
+
+[features]
+default = ["std"]
+std = ["tpt-math-numeric/std"]
+alloc = ["tpt-math-numeric/alloc"]
+
+[lints]
+rust = { unsafe_op_in_unsafe_fn = "warn", unsafe_code = "forbid" }
+clippy = { all = "warn" }

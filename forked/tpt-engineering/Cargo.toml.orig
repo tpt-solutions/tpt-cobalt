@@ -1,0 +1,143 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/tpt-eng-biomech",
+    "crates/tpt-eng-building-sys",
+    "crates/tpt-eng-cad",
+    "crates/tpt-eng-cli",
+    "crates/tpt-eng-controls",
+    "crates/tpt-eng-crystallography",
+    "crates/tpt-eng-electrical",
+    "crates/tpt-eng-examples",
+    "crates/tpt-eng-gdt",
+    "crates/tpt-eng-geo-asset",
+    "crates/tpt-eng-geo-topology",
+    "crates/tpt-eng-geometry",
+    "crates/tpt-eng-geotech",
+    "crates/tpt-eng-heat-transfer",
+    "crates/tpt-eng-io",
+    "crates/tpt-eng-materials",
+    "crates/tpt-eng-mesh",
+    "crates/tpt-eng-network-matrix",
+    "crates/tpt-eng-nurbs",
+    "crates/tpt-eng-pcb",
+    "crates/tpt-eng-plot",
+    "crates/tpt-eng-power-components",
+    "crates/tpt-eng-props",
+    "crates/tpt-eng-props-air",
+    "crates/tpt-eng-props-fuels",
+    "crates/tpt-eng-props-mixture",
+    "crates/tpt-eng-props-water",
+    "crates/tpt-eng-reliability",
+    "crates/tpt-eng-renewables",
+    "crates/tpt-eng-report",
+    "crates/tpt-eng-safety",
+    "crates/tpt-eng-schedule",
+    "crates/tpt-eng-sections",
+    "crates/tpt-eng-standards",
+    "crates/tpt-eng-structural",
+    "crates/tpt-eng-thermal-mgmt",
+    "crates/tpt-eng-timeseries",
+    "crates/tpt-eng-timeseries-align",
+    "crates/tpt-eng-timeseries-core",
+    "crates/tpt-eng-timeseries-gap",
+    "crates/tpt-eng-tolerance",
+    "crates/tpt-eng-unit-ops",
+    "crates/tpt-eng-vehicle-dynamics",
+    "crates/tpt-engineering",
+]
+exclude = []
+
+[workspace.package]
+version = "0.1.0"
+description = "tpt-engineering — applied engineering primitives for the TPT Solutions physical-systems verticals"
+authors = ["TPT Solutions"]
+edition = "2024"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+homepage = "https://github.com/tpt-solutions/tpt-engineering"
+repository = "https://github.com/tpt-solutions/tpt-engineering"
+
+[workspace.dependencies]
+# Cross-repo dependencies (tpt-math substrate), published on crates.io.
+tpt-math-units = "0.1.0"
+tpt-math-numeric = "0.1.0"
+tpt-math-linalg = "0.1.0"
+tpt-math-stats = "0.1.0"
+
+# In-repo crate dependencies (referenced by `workspace = true`).
+tpt-eng-props-water = { version = "0.1.0", path = "crates/tpt-eng-props-water" }
+tpt-eng-props-air = { version = "0.1.0", path = "crates/tpt-eng-props-air" }
+tpt-eng-props-fuels = { version = "0.1.0", path = "crates/tpt-eng-props-fuels" }
+tpt-eng-props = { version = "0.1.1", path = "crates/tpt-eng-props" }
+tpt-eng-timeseries-core = { version = "0.1.0", path = "crates/tpt-eng-timeseries-core" }
+tpt-eng-timeseries-align = { version = "0.1.0", path = "crates/tpt-eng-timeseries-align" }
+tpt-eng-timeseries-gap = { version = "0.1.0", path = "crates/tpt-eng-timeseries-gap" }
+tpt-eng-timeseries = { version = "0.1.0", path = "crates/tpt-eng-timeseries" }
+tpt-eng-geo-asset = { version = "0.1.0", path = "crates/tpt-eng-geo-asset" }
+tpt-eng-geo-topology = { version = "0.1.0", path = "crates/tpt-eng-geo-topology" }
+tpt-eng-network-matrix = { version = "0.1.0", path = "crates/tpt-eng-network-matrix" }
+tpt-eng-controls = { version = "0.1.0", path = "crates/tpt-eng-controls" }
+tpt-eng-structural = { version = "0.1.0", path = "crates/tpt-eng-structural" }
+tpt-eng-materials = { version = "0.1.0", path = "crates/tpt-eng-materials" }
+tpt-eng-sections = { version = "0.1.0", path = "crates/tpt-eng-sections" }
+tpt-eng-standards = { version = "0.1.0", path = "crates/tpt-eng-standards" }
+tpt-eng-geometry = { version = "0.1.0", path = "crates/tpt-eng-geometry" }
+tpt-eng-mesh = { version = "0.1.0", path = "crates/tpt-eng-mesh" }
+tpt-eng-nurbs = { version = "0.1.0", path = "crates/tpt-eng-nurbs" }
+tpt-eng-gdt = { version = "0.1.0", path = "crates/tpt-eng-gdt" }
+tpt-eng-cad = { version = "0.1.0", path = "crates/tpt-eng-cad" }
+tpt-eng-tolerance = { version = "0.1.0", path = "crates/tpt-eng-tolerance" }
+tpt-eng-reliability = { version = "0.1.0", path = "crates/tpt-eng-reliability" }
+tpt-eng-safety = { version = "0.1.0", path = "crates/tpt-eng-safety" }
+tpt-eng-io = { version = "0.1.0", path = "crates/tpt-eng-io" }
+tpt-eng-report = { version = "0.1.0", path = "crates/tpt-eng-report" }
+tpt-eng-plot = { version = "0.1.0", path = "crates/tpt-eng-plot" }
+tpt-eng-cli = { version = "0.1.0", path = "crates/tpt-eng-cli" }
+tpt-eng-examples = { version = "0.1.0", path = "crates/tpt-eng-examples" }
+
+# External dependencies shared by the newly merged crates.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+csv = "1"
+thiserror = "2"
+glam = { version = "0.33", features = ["serde"] }
+rand = "0.10"
+rand_distr = "0.6"
+approx = "0.5"
+plotters = { version = "0.3", default-features = false, features = ["svg_backend", "bitmap_backend", "bitmap_encoder", "line_series", "point_series"] }
+clap = { version = "4.5", features = ["derive", "cargo"] }
+anyhow = "1.0"
+
+tpt-eng-electrical = { version = "0.1.0", path = "crates/tpt-eng-electrical" }
+tpt-eng-heat-transfer = { version = "0.1.0", path = "crates/tpt-eng-heat-transfer" }
+tpt-eng-props-mixture = { version = "0.1.0", path = "crates/tpt-eng-props-mixture" }
+tpt-eng-pcb = { version = "0.1.0", path = "crates/tpt-eng-pcb" }
+tpt-eng-thermal-mgmt = { version = "0.1.0", path = "crates/tpt-eng-thermal-mgmt" }
+tpt-eng-power-components = { version = "0.1.0", path = "crates/tpt-eng-power-components" }
+tpt-eng-renewables = { version = "0.1.0", path = "crates/tpt-eng-renewables" }
+tpt-eng-vehicle-dynamics = { version = "0.1.0", path = "crates/tpt-eng-vehicle-dynamics" }
+tpt-eng-biomech = { version = "0.1.0", path = "crates/tpt-eng-biomech" }
+tpt-eng-unit-ops = { version = "0.1.0", path = "crates/tpt-eng-unit-ops" }
+tpt-eng-crystallography = { version = "0.1.0", path = "crates/tpt-eng-crystallography" }
+tpt-eng-geotech = { version = "0.1.0", path = "crates/tpt-eng-geotech" }
+tpt-eng-building-sys = { version = "0.1.0", path = "crates/tpt-eng-building-sys" }
+tpt-eng-schedule = { version = "0.1.0", path = "crates/tpt-eng-schedule" }
+tpt-engineering = { version = "0.1.0", path = "crates/tpt-engineering" }
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "warn"
+# No crate here is allowed to introduce `unsafe`; the math substrate we wrap is
+# already audited, and these primitives need no unsafe escape hatch.
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = "warn"
+missing_errors_doc = "warn"
+missing_panics_doc = "warn"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+strip = "symbols"
+overflow-checks = true

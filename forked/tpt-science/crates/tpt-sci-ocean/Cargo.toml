@@ -1,0 +1,30 @@
+[package]
+name = "tpt-sci-ocean"
+description = "Shallow-water and primitive-equation ocean circulation (from scratch) for the tpt-science pillar"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+repository = "https://github.com/tpt-solutions/tpt-science"
+homepage = "https://github.com/tpt-solutions/tpt-science"
+readme = "README.md"
+documentation = "https://docs.rs/tpt-sci-ocean"
+keywords = ["ocean", "shallow-water", "circulation", "cfd", "science"]
+categories = ["science", "simulation"]
+publish = false
+
+[dependencies]
+tpt-sci-cfd-core = { path = "../tpt-sci-cfd-core", version = "0.1.0" }
+tpt-math-linalg = { version = "0.1.0" }
+thiserror = { version = "2" }
+
+[dev-dependencies]
+approx = { version = "0.5" }
+
+[lints]
+rust = { unsafe_op_in_unsafe_fn = "warn", unsafe_code = "allow" }
+clippy = { all = "warn", missing_errors_doc = "warn", missing_panics_doc = "warn" }
+
+[package.metadata.docs.rs]
+all-features = true

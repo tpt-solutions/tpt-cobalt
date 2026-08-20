@@ -1,0 +1,28 @@
+[package]
+name = "tpt-for-redundancy"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+description = "Redundancy / fault-tolerance primitives (voting, TMR, N-copy)."
+
+readme = "README.md"
+keywords = ["fault-tolerance", "redundancy", "voting", "tmr", "reliability"]
+categories = ["rust-patterns", "embedded"]
+
+[dependencies]
+
+[features]
+default = ["std"]
+std = []
+alloc = []
+
+[lints]
+rust = { unsafe_op_in_unsafe_fn = "warn" }
+clippy = { all = "warn" }
+
+[[example]]
+name = "redundancy_basic"
+path = "examples/sensor_fusion.rs"
+

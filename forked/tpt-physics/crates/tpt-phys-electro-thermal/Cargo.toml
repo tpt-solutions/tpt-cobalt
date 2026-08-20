@@ -1,0 +1,23 @@
+[package]
+name = "tpt-phys-electro-thermal"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.84"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+description = "Electro-thermal coupling: Joule heating, resistive losses, and temperature-dependent conductivity for tpt-physics."
+repository = "https://github.com/tpt-solutions/tpt-physics"
+homepage = "https://github.com/tpt-solutions/tpt-physics"
+readme = "README.md"
+keywords = ["electro-thermal", "joule", "heating", "resistive", "multiphysics"]
+categories = ["science", "simulation", "mathematics"]
+
+[dependencies]
+tracing = { version = "0.1" }
+
+[features]
+default = []
+
+[lints]
+rust = { unsafe_op_in_unsafe_fn = "warn", unsafe_code = "forbid" }
+clippy = { all = "warn" }

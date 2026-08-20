@@ -1,0 +1,16 @@
+[package]
+name = "tpt-stat"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.81"
+license = "MIT OR Apache-2.0"
+description = "Unified statistical modeling: distributions, hypothesis tests, regression, Bayesian inference, time series"
+
+[dependencies]
+tpt-omni = { path = "../tpt-omni" }
+ndarray = { version = "0.16", features = ["rayon"] }
+rayon = { version = "1" }
+thiserror = { version = "1" }
+rand = "0.8"
+rand_distr = "0.4"
+libm = "0.2"

@@ -1,0 +1,103 @@
+[package]
+name = "tpt-engineering"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+description = "Umbrella meta-crate re-exporting the tpt-eng-* engineering primitives behind per-crate feature flags"
+repository = "https://github.com/tpt-solutions/tpt-engineering"
+homepage = "https://github.com/tpt-solutions/tpt-engineering"
+publish = false
+
+[dependencies]
+tpt-eng-props-water = { path = "../tpt-eng-props-water", version = "0.1.0", optional = true }
+tpt-eng-props-air = { path = "../tpt-eng-props-air", version = "0.1.0", optional = true }
+tpt-eng-props-fuels = { path = "../tpt-eng-props-fuels", version = "0.1.0", optional = true }
+tpt-eng-props = { path = "../tpt-eng-props", version = "0.1.1", optional = true }
+tpt-eng-timeseries-core = { path = "../tpt-eng-timeseries-core", version = "0.1.0", optional = true }
+tpt-eng-timeseries-align = { path = "../tpt-eng-timeseries-align", version = "0.1.0", optional = true }
+tpt-eng-timeseries-gap = { path = "../tpt-eng-timeseries-gap", version = "0.1.0", optional = true }
+tpt-eng-timeseries = { path = "../tpt-eng-timeseries", version = "0.1.0", optional = true }
+tpt-eng-geo-asset = { path = "../tpt-eng-geo-asset", version = "0.1.0", optional = true }
+tpt-eng-geo-topology = { path = "../tpt-eng-geo-topology", version = "0.1.0", optional = true }
+tpt-eng-network-matrix = { path = "../tpt-eng-network-matrix", version = "0.1.0", optional = true }
+tpt-eng-controls = { path = "../tpt-eng-controls", version = "0.1.0", optional = true }
+tpt-eng-structural = { path = "../tpt-eng-structural", version = "0.1.0", optional = true }
+tpt-eng-materials = { path = "../tpt-eng-materials", version = "0.1.0", optional = true }
+tpt-eng-sections = { path = "../tpt-eng-sections", version = "0.1.0", optional = true }
+tpt-eng-standards = { path = "../tpt-eng-standards", version = "0.1.0", optional = true }
+tpt-eng-geometry = { path = "../tpt-eng-geometry", version = "0.1.0", optional = true }
+tpt-eng-mesh = { path = "../tpt-eng-mesh", version = "0.1.0", optional = true }
+tpt-eng-nurbs = { path = "../tpt-eng-nurbs", version = "0.1.0", optional = true }
+tpt-eng-gdt = { path = "../tpt-eng-gdt", version = "0.1.0", optional = true }
+tpt-eng-cad = { path = "../tpt-eng-cad", version = "0.1.0", optional = true }
+tpt-eng-tolerance = { path = "../tpt-eng-tolerance", version = "0.1.0", optional = true }
+tpt-eng-reliability = { path = "../tpt-eng-reliability", version = "0.1.0", optional = true }
+tpt-eng-safety = { path = "../tpt-eng-safety", version = "0.1.0", optional = true }
+tpt-eng-io = { path = "../tpt-eng-io", version = "0.1.0", optional = true }
+tpt-eng-report = { path = "../tpt-eng-report", version = "0.1.0", optional = true }
+tpt-eng-plot = { path = "../tpt-eng-plot", version = "0.1.0", optional = true }
+tpt-eng-examples = { path = "../tpt-eng-examples", version = "0.1.0", optional = true }
+tpt-eng-electrical = { path = "../tpt-eng-electrical", version = "0.1.0", optional = true }
+tpt-eng-heat-transfer = { path = "../tpt-eng-heat-transfer", version = "0.1.0", optional = true }
+tpt-eng-props-mixture = { path = "../tpt-eng-props-mixture", version = "0.1.0", optional = true }
+tpt-eng-pcb = { path = "../tpt-eng-pcb", version = "0.1.0", optional = true }
+tpt-eng-thermal-mgmt = { path = "../tpt-eng-thermal-mgmt", version = "0.1.0", optional = true }
+tpt-eng-power-components = { path = "../tpt-eng-power-components", version = "0.1.0", optional = true }
+tpt-eng-renewables = { path = "../tpt-eng-renewables", version = "0.1.0", optional = true }
+tpt-eng-vehicle-dynamics = { path = "../tpt-eng-vehicle-dynamics", version = "0.1.0", optional = true }
+tpt-eng-biomech = { path = "../tpt-eng-biomech", version = "0.1.0", optional = true }
+tpt-eng-unit-ops = { path = "../tpt-eng-unit-ops", version = "0.1.0", optional = true }
+tpt-eng-crystallography = { path = "../tpt-eng-crystallography", version = "0.1.0", optional = true }
+tpt-eng-geotech = { path = "../tpt-eng-geotech", version = "0.1.0", optional = true }
+tpt-eng-building-sys = { path = "../tpt-eng-building-sys", version = "0.1.0", optional = true }
+tpt-eng-schedule = { path = "../tpt-eng-schedule", version = "0.1.0", optional = true }
+
+[features]
+default = []
+props-water = ["tpt-eng-props-water"]
+props-air = ["tpt-eng-props-air"]
+props-fuels = ["tpt-eng-props-fuels"]
+props = ["tpt-eng-props"]
+timeseries-core = ["tpt-eng-timeseries-core"]
+timeseries-align = ["tpt-eng-timeseries-align"]
+timeseries-gap = ["tpt-eng-timeseries-gap"]
+timeseries = ["tpt-eng-timeseries"]
+geo-asset = ["tpt-eng-geo-asset"]
+geo-topology = ["tpt-eng-geo-topology"]
+network-matrix = ["tpt-eng-network-matrix"]
+controls = ["tpt-eng-controls"]
+structural = ["tpt-eng-structural"]
+materials = ["tpt-eng-materials"]
+sections = ["tpt-eng-sections"]
+standards = ["tpt-eng-standards"]
+geometry = ["tpt-eng-geometry"]
+mesh = ["tpt-eng-mesh"]
+nurbs = ["tpt-eng-nurbs"]
+gdt = ["tpt-eng-gdt"]
+cad = ["tpt-eng-cad"]
+tolerance = ["tpt-eng-tolerance"]
+reliability = ["tpt-eng-reliability"]
+safety = ["tpt-eng-safety"]
+io = ["tpt-eng-io"]
+report = ["tpt-eng-report"]
+plot = ["tpt-eng-plot"]
+examples = ["tpt-eng-examples"]
+electrical = ["tpt-eng-electrical"]
+heat-transfer = ["tpt-eng-heat-transfer"]
+props-mixture = ["tpt-eng-props-mixture"]
+pcb = ["tpt-eng-pcb"]
+thermal-mgmt = ["tpt-eng-thermal-mgmt"]
+power-components = ["tpt-eng-power-components"]
+renewables = ["tpt-eng-renewables"]
+vehicle-dynamics = ["tpt-eng-vehicle-dynamics"]
+biomech = ["tpt-eng-biomech"]
+unit-ops = ["tpt-eng-unit-ops"]
+crystallography = ["tpt-eng-crystallography"]
+geotech = ["tpt-eng-geotech"]
+building-sys = ["tpt-eng-building-sys"]
+schedule = ["tpt-eng-schedule"]
+
+[lints]
+rust = { unsafe_op_in_unsafe_fn = "warn", unsafe_code = "forbid" }
+clippy = { all = "warn", missing_errors_doc = "warn", missing_panics_doc = "warn" }

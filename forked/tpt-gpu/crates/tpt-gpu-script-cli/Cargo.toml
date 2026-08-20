@@ -1,0 +1,27 @@
+[package]
+name = "tpt-gpu-script-cli"
+version = "0.1.0"
+edition = "2021"
+authors = ["TPT Solutions"]
+description = "tpt — command-line interface for the TPT Script compiler"
+license = "MIT OR Apache-2.0 WITH LLVM-exception"
+repository = "https://github.com/tpt-solutions/tpt-gpu"
+documentation = "https://docs.rs/tpt-gpu-script-cli"
+readme = "README.md"
+keywords = ["gpu", "compiler", "ml", "ai", "tptscript"]
+categories = ["command-line-utilities", "development-tools"]
+
+[lib]
+name = "tpt_gpu_script_cli"
+path = "src/lib.rs"
+
+[[bin]]
+name = "tpt-gpu-script"
+path = "src/main.rs"
+
+[[bin]]
+name = "tpt"
+path = "src/bin/tpt.rs"
+
+[dependencies]
+tpt-gpu-script-core = { path = "../tpt-gpu-script-core", version = "0.1.0" }

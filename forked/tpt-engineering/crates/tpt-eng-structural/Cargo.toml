@@ -1,0 +1,20 @@
+[package]
+name = "tpt-eng-structural"
+version = "0.1.1"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+description = "Structural engineering primitives: loads, beam/frame analysis, code checks."
+keywords = ["structural", "engineering", "beam", "mechanics", "analysis"]
+categories = ["science", "mathematics", "algorithms"]
+readme = "README.md"
+repository = "https://github.com/tpt-solutions/tpt-engineering"
+homepage = "https://github.com/tpt-solutions/tpt-engineering"
+
+[dependencies]
+tpt-math-units = { version = "0.1.0" }
+tpt-eng-safety = { path = "../tpt-eng-safety", version = "0.1.0" }
+
+[lints]
+rust = { unsafe_op_in_unsafe_fn = "warn", unsafe_code = "forbid" }
+clippy = { all = "warn", missing_errors_doc = "warn", missing_panics_doc = "warn" }

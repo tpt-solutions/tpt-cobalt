@@ -1,0 +1,26 @@
+[package]
+name = "tpt-eng-cad"
+version = "0.1.1"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/tpt-solutions/tpt-engineering"
+authors = ["TPT Solutions"]
+rust-version = "1.85"
+description = "Solid modeling and CAD kernel behavior: solid primitives, boolean operations, B-Rep, feature modeling, metadata"
+readme = "README.md"
+keywords = ["cad", "solid", "csg", "brep", "engineering"]
+categories = ["science", "graphics"]
+
+[dependencies]
+glam = { version = "0.33", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
+tpt-eng-geometry = { path = "../tpt-eng-geometry", version = "0.1.0" }
+tpt-eng-mesh = { path = "../tpt-eng-mesh", version = "0.1.0" }
+tpt-eng-nurbs = { path = "../tpt-eng-nurbs", version = "0.1.0" }
+
+[dev-dependencies]
+tpt-eng-gdt = { path = "../tpt-eng-gdt", version = "0.1.0" }
+
+[lints]
+rust = { unsafe_op_in_unsafe_fn = "warn", unsafe_code = "forbid" }
+clippy = { all = "warn", missing_errors_doc = "warn", missing_panics_doc = "warn" }

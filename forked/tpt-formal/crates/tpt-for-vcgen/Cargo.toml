@@ -1,0 +1,24 @@
+[package]
+name = "tpt-for-vcgen"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+description = "Verification-condition generation."
+
+readme = "README.md"
+keywords = ["vcgen", "verification", "formal-verification", "logic", "proof"]
+categories = ["science", "mathematics", "rust-patterns"]
+
+[dependencies]
+tpt-for-smt-lite = { path = "../tpt-for-smt-lite", version = "0.1.0" }
+
+[lints]
+rust = { unsafe_op_in_unsafe_fn = "warn" }
+clippy = { all = "warn" }
+
+[[example]]
+name = "vcgen_basic"
+path = "examples/program_verification.rs"
+

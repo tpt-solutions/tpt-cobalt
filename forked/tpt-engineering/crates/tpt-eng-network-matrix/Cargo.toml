@@ -1,0 +1,20 @@
+[package]
+name = "tpt-eng-network-matrix"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+description = "Incidence/admittance matrix generation for downstream solvers."
+keywords = ["matrix", "network", "incidence", "admittance", "laplacian"]
+categories = ["science", "algorithms", "mathematics"]
+readme = "README.md"
+repository = "https://github.com/tpt-solutions/tpt-engineering"
+homepage = "https://github.com/tpt-solutions/tpt-engineering"
+
+[dependencies]
+tpt-eng-geo-topology = { path = "../tpt-eng-geo-topology", version = "0.1.0" }
+tpt-math-linalg = { version = "0.1.0" }
+
+[lints]
+rust = { unsafe_op_in_unsafe_fn = "warn", unsafe_code = "forbid" }
+clippy = { all = "warn", missing_errors_doc = "warn", missing_panics_doc = "warn" }

@@ -1,0 +1,24 @@
+[package]
+name = "tpt-for-smt-lite"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+description = "Lightweight SMT bridge: typed term/problem builder, SMT-LIB2 serializer, minimal evaluator."
+
+readme = "README.md"
+keywords = ["smt", "smt-lib", "solver", "formal-verification", "logic"]
+categories = ["science", "mathematics", "parsing"]
+
+[dependencies]
+tpt-for-sat = { path = "../tpt-for-sat" }
+
+[lints]
+rust = { unsafe_op_in_unsafe_fn = "warn" }
+clippy = { all = "warn" }
+
+[[example]]
+name = "smt_lite_basic"
+path = "examples/postcondition_proof.rs"
+

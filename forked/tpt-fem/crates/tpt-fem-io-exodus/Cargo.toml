@@ -1,0 +1,24 @@
+[package]
+name = "tpt-fem-io-exodus"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+description = "Exodus II mesh reader/writer for tpt-fem (minimal pure-Rust NetCDF-3 classic)."
+repository = "https://github.com/tpt-solutions/tpt-fem"
+homepage = "https://github.com/tpt-solutions/tpt-fem"
+readme = "README.md"
+keywords = ["exodus", "netcdf", "mesh", "fem", "file-format"]
+categories = ["science", "data-structures", "parsing"]
+
+[dependencies]
+tpt-fem-mesh = { path = "../tpt-fem-mesh", version = "0.1.0" }
+
+[features]
+default = []
+
+[lints]
+rust = { unsafe_op_in_unsafe_fn = "warn" }
+clippy = { all = { level = "warn", priority = -1 }, excessive_precision = "allow", needless_range_loop = "allow", too_many_arguments = "allow" }
+

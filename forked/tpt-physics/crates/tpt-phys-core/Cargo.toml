@@ -1,0 +1,44 @@
+[package]
+name = "tpt-phys-core"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.84"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+description = "Foundational physics data: type-safe material database and CAD ingestion adapter for tpt-physics."
+repository = "https://github.com/tpt-solutions/tpt-physics"
+homepage = "https://github.com/tpt-solutions/tpt-physics"
+readme = "README.md"
+keywords = ["physics", "materials", "cad", "mesh", "fem"]
+categories = ["science", "mathematics", "simulation"]
+
+[dependencies]
+tpt-math-units = { path = "../../../tpt-math/crates/tpt-math-units", default-features = false }
+tpt-fem-mesh = { path = "../../../tpt-fem/crates/tpt-fem-mesh" }
+serde = { version = "1", features = ["derive"] }
+serde_json = { workspace = true }
+tracing = { version = "0.1" }
+
+# Optional: Monte-Carlo uncertainty quantification over material property
+# scatter. Gated behind the `uq` feature so consumers that don't need it pay
+# no `proptest` dependency cost.
+proptest = { version = "1", optional = true }
+
+[features]
+default = []
+uq = ["dep:proptest"]
+
+[[example]]
+name = "uq_cantilever"
+required-features = ["uq"]
+
+[[example]]
+name = "uq_natural_frequency"
+required-features = ["uq"]
+
+[dev-dependencies]
+proptest = { version = "1" }
+
+[lints]
+rust = { unsafe_op_in_unsafe_fn = "warn", unsafe_code = "forbid" }
+clippy = { all = "warn" }

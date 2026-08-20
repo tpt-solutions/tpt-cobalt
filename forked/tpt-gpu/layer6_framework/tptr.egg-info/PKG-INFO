@@ -1,0 +1,18 @@
+Metadata-Version: 2.4
+Name: tptr
+Version: 0.1.0
+Summary: TPT Framework Backends - Python thin wrapper over Rust GPU runtime
+License: Apache-2.0
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+Provides-Extra: pytorch
+Requires-Dist: torch>=1.12; extra == "pytorch"
+Provides-Extra: jax
+Requires-Dist: jax>=0.4; extra == "jax"
+Requires-Dist: jaxlib>=0.4; extra == "jax"
+Provides-Extra: dev
+Requires-Dist: pytest>=7; extra == "dev"
+Requires-Dist: black; extra == "dev"
+Requires-Dist: mypy; extra == "dev"
+Dynamic: description-content-type
+Dynamic: requires-python

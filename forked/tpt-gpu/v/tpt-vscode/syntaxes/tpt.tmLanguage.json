@@ -1,0 +1,103 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "TPT Script",
+  "scopeName": "source.tpt",
+  "fileTypes": [".tpts"],
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#annotations" },
+    { "include": "#keywords" },
+    { "include": "#types" },
+    { "include": "#builtins" },
+    { "include": "#strings" },
+    { "include": "#numbers" },
+    { "include": "#operators" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.double-slash.tpt",
+          "match": "//.*$"
+        },
+        {
+          "name": "comment.block.tpt",
+          "begin": "/\\*",
+          "end": "\\*/"
+        }
+      ]
+    },
+    "annotations": {
+      "patterns": [
+        {
+          "name": "meta.annotation.tpt",
+          "match": "@\\w+(\\(.*?\\))?",
+          "contentEntity": "meta.annotation.name.tpt"
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.tpt",
+          "match": "\\b(fn|let|return|if|else|for|while|break|continue|import|in|type)\\b"
+        },
+        {
+          "name": "keyword.operator.tpt",
+          "match": "\\b(true|false)\\b"
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "name": "entity.name.type.tpt",
+          "match": "\\b(Tensor|Model|DataLoader|ComputeStream|Optimizer|Checkpoint)\\b"
+        },
+        {
+          "name": "support.type.primitive.tpt",
+          "match": "\\b(i8|i16|i32|i64|u8|u16|u32|u64|f16|bf16|f32|f64|bool|index)\\b"
+        }
+      ]
+    },
+    "builtins": {
+      "patterns": [
+        {
+          "name": "support.function.tpt",
+          "match": "tpt\\.(zeros|ones|empty|full|random|relu|gelu|sigmoid|tanh|matmul|gemm|attention|softmax|cross_entropy|mse|reshape|transpose|concat|conv2d|pool2d|no_grad|shape|dtype|from_list|arange|linspace|eye|log|exp|sqrt|abs|neg|floor|ceil|round|contiguous|to_host|is_nan|is_inf|leaky_relu|elu|silu|log2|log_softmax|broadcast_to|expand|repeat|flip|pad|split|chunk|slice|normalize|depthwise_conv2d|conv_transpose2d|flash_attention|mae|bce|kl_div|save_model|freeze|unfreeze|count_params|data_loader|all_reduce|all_gather|scatter|barrier|print|sync|seed|numel|benchmark|grad|backward|step|forward)"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.tpt",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.tpt",
+              "match": "\\\\."
+            }
+          ]
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.tpt",
+          "match": "\\b(\\d+\\.?\\d*(e[+-]?\\d+)?)\\b"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.tpt",
+          "match": "(\\+|-|\\*|/|%|==|!=|<|>|<=|>=|&&|\\|\\||!|=|->|\\.\\.|\\.\\.=|:)"
+        }
+      ]
+    }
+  }
+}

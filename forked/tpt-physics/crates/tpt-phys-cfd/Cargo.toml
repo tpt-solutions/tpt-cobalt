@@ -1,0 +1,29 @@
+[package]
+name = "tpt-phys-cfd"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.84"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+description = "Computational Fluid Dynamics: Lattice Boltzmann (D2Q9) incompressible flow solver."
+repository = "https://github.com/tpt-solutions/tpt-physics"
+homepage = "https://github.com/tpt-solutions/tpt-physics"
+readme = "README.md"
+keywords = ["cfd", "lattice-boltzmann", "fluid", "simulation"]
+categories = ["science", "simulation", "mathematics"]
+
+[dependencies]
+rayon = { version = "1" }
+tracing = { version = "0.1" }
+
+[dev-dependencies]
+proptest = { version = "1" }
+criterion = { version = "0.5" }
+
+[[bench]]
+name = "lbm"
+harness = false
+
+[lints]
+rust = { unsafe_op_in_unsafe_fn = "warn", unsafe_code = "forbid" }
+clippy = { all = "warn" }

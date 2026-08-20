@@ -1,0 +1,25 @@
+[package]
+name = "tpt-for-sat"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+description = "From-scratch pure-Rust CDCL SAT solver (no FFI): CNF, watched literals, 1UIP clause learning, restarts."
+
+readme = "README.md"
+keywords = ["sat", "solver", "cdcl", "cnf", "boolean-satisfiability"]
+categories = ["algorithms", "science", "mathematics"]
+
+[dependencies]
+
+[dev-dependencies]
+tpt-for-det-proptest = { path = "../tpt-for-det-proptest" }
+
+[[example]]
+name = "sat_basic"
+path = "examples/graph_coloring.rs"
+
+[lints]
+rust = { unsafe_op_in_unsafe_fn = "warn" }
+clippy = { all = "warn" }

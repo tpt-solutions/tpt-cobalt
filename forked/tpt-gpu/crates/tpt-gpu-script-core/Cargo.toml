@@ -1,0 +1,21 @@
+[package]
+name = "tpt-gpu-script-core"
+version = "0.1.0"
+edition = "2021"
+authors = ["TPT Solutions"]
+description = "TPT Script compiler frontend -- lexer, AST, and parser"
+license = "MIT OR Apache-2.0 WITH LLVM-exception"
+repository = "https://github.com/tpt-solutions/tpt-gpu"
+documentation = "https://docs.rs/tpt-gpu-script-core"
+readme = "README.md"
+keywords = ["gpu", "compiler", "ml", "ai", "tptscript"]
+categories = ["compilers", "development-tools"]
+rust-version = "1.75"
+
+[dependencies]
+thiserror = { version = "2" }
+serde = { version = "1", features = ["derive"] }
+toml = { version = "1.1" }
+
+[dev-dependencies]
+# Used only in tests

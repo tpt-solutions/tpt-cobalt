@@ -1,0 +1,24 @@
+[package]
+name = "tpt-uir-flatbuffers"
+version = "0.1.0"
+edition = "2021"
+description = "Zero-copy FlatBuffers format for TPT-UIR (memory-mappable)"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+repository = "https://github.com/tpt-solutions/tpt-uir"
+homepage = "https://github.com/tpt-solutions/tpt-uir"
+documentation = "https://docs.rs/tpt-uir-flatbuffers"
+keywords = ["uir", "ir", "flatbuffers", "serialization", "no-std"]
+categories = ["encoding", "compilers", "no-std"]
+readme = "README.md"
+
+[dependencies]
+flatbuffers = { version = "24", default-features = false }
+tpt-uir-core = { path = "../tpt-uir-core", version = "0.1.0" }
+memmap2 = { version = "0.9", optional = true }
+
+[features]
+default = []
+std = []
+# Zero-copy memory-mapped access. Requires `std` for file I/O.
+mmap = ["dep:memmap2", "std"]

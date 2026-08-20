@@ -1,0 +1,37 @@
+[package]
+name = "tpt-for-verified-ode"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+description = "Verified ODE solving: contract-guarded fixed-step integrators."
+
+readme = "README.md"
+keywords = ["ode", "numerical", "simulation", "verification", "integrator"]
+categories = ["science", "mathematics", "algorithms"]
+
+[dependencies]
+tpt-for-contract = { path = "../tpt-for-contract", version = "0.1.0" }
+tpt-sci-ode = { git = "https://github.com/tpt-solutions/tpt-science", optional = true }
+
+[features]
+# Wrap the high-performance adaptive solvers from `tpt-sci-ode` (tpt-science
+# pillar) behind the same `OdeSystem` / `Vec<Point>` trajectory surface as the
+# built-in fixed-step integrators. Off by default so the crate stays
+# self-contained and `no_std`-friendly-leaning.
+backend-sci-ode = ["dep:tpt-sci-ode"]
+
+[lints]
+rust = { unsafe_op_in_unsafe_fn = "warn" }
+clippy = { all = "warn" }
+
+[[example]]
+name = "verified_ode_basic"
+path = "examples/decay_integration.rs"
+
+[[example]]
+name = "sci_ode_basic"
+path = "examples/sci_ode_basic.rs"
+required-features = ["backend-sci-ode"]
+

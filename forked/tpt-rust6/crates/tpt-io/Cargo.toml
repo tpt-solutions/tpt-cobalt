@@ -1,0 +1,20 @@
+[package]
+name = "tpt-io"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.81"
+license = "MIT OR Apache-2.0"
+description = "Universal scientific data I/O: one API for every file format, zero-copy where possible"
+
+[dependencies]
+tpt-omni = { path = "../tpt-omni" }
+arrow = { version = "54" }
+glob = "0.3"
+serde_json = "1"
+thiserror = { version = "1" }
+parquet = { version = "54", features = ["arrow"] }
+hdf5 = { version = "0.8", optional = true }
+
+[features]
+default = []
+hdf5 = ["dep:hdf5"]

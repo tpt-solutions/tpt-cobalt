@@ -1,0 +1,29 @@
+[package]
+name = "tpt-sci-reaction-network"
+description = "Species/rate/stoichiometry DSL for compartmental models (Catalyst.jl-style), built from scratch, for the tpt-science pillar"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+repository = "https://github.com/tpt-solutions/tpt-science"
+homepage = "https://github.com/tpt-solutions/tpt-science"
+readme = "README.md"
+documentation = "https://docs.rs/tpt-sci-reaction-network"
+keywords = ["reaction-network", "systems-biology", "ode", "catalyst", "science"]
+categories = ["science", "simulation"]
+publish = false
+
+[dependencies]
+tpt-sci-ode = { path = "../tpt-sci-ode", version = "0.1.0" }
+thiserror = { version = "2" }
+
+[dev-dependencies]
+approx = { version = "0.5" }
+
+[lints]
+rust = { unsafe_op_in_unsafe_fn = "warn", unsafe_code = "allow" }
+clippy = { all = "warn", missing_errors_doc = "warn", missing_panics_doc = "warn" }
+
+[package.metadata.docs.rs]
+all-features = true

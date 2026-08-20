@@ -1,0 +1,13 @@
+[package]
+name = "tpt-grad"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.81"
+license = "MIT OR Apache-2.0"
+description = "Compile-time autograd procedural macros (#[derive_grad], #[derive_vmap], #[derive_jit])"
+
+[dependencies]
+tpt-grad-macro = { path = "../tpt-grad-macro" }
+tpt-omni = { path = "../tpt-omni" }
+ndarray = { version = "0.16", features = ["rayon"] }
+rayon = { version = "1" }

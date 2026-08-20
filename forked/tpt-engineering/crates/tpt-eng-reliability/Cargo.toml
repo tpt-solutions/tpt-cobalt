@@ -1,0 +1,23 @@
+[package]
+name = "tpt-eng-reliability"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/tpt-solutions/tpt-engineering"
+authors = ["TPT Solutions"]
+description = "Reliability and life analysis: fatigue, life prediction, failure rates, FMEA, probabilistic design."
+keywords = ["engineering", "reliability", "maintenance", "weibull", "life-analysis"]
+categories = ["science", "mathematics"]
+
+[dependencies]
+rand = { version = "0.10" }
+tpt-math-stats = { version = "0.1.0" }
+thiserror = { version = "2" }
+
+[dev-dependencies]
+approx = { version = "0.5" }
+
+[lints]
+rust = { unsafe_op_in_unsafe_fn = "warn", unsafe_code = "forbid" }
+clippy = { all = "warn", missing_errors_doc = "warn", missing_panics_doc = "warn" }

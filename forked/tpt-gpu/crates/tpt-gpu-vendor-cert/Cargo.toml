@@ -1,0 +1,28 @@
+[package]
+name = "tpt-gpu-vendor-cert"
+version = "0.1.0"
+edition = "2021"
+authors = ["TPT Solutions"]
+description = "TPT-GPU vendor certification test suite"
+license = "MIT OR Apache-2.0 WITH LLVM-exception"
+repository = "https://github.com/tpt-solutions/tpt-gpu"
+
+[features]
+sim = ["tpt-gpu-primitives/sim"]
+cuda = ["tpt-gpu-primitives/cuda"]
+rocm = ["tpt-gpu-primitives/rocm"]
+metal = ["tpt-gpu-primitives/metal"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+clap = { version = "4", features = ["derive"] }
+anyhow = "1"
+log = "0.4"
+env_logger = "0.11"
+chrono = { version = "0.4", features = ["serde"] }
+tpt-gpu-primitives = { path = "../tpt-gpu-primitives", version = "0.1.0", default-features = false }
+
+[[bin]]
+name = "tpt-gpu-vendor-cert"
+path = "src/main.rs"

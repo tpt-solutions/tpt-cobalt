@@ -1,0 +1,319 @@
+//! ParaView-compatible result export for `tpt-fem`.
+//!
+//! Wraps [`vtkio`] to write the linear element types of `tpt-fem-mesh`
+//! (`Line2`, `Tri3`, `Quad4`, `Tet4`, `Hex8`) as an unstructured-grid `.vtk`
+//! (legacy) or `.vtu` (XML) file, with optional per-node scalar fields such as
+//! a computed temperature or displacement magnitude.
+//!
+//! # Example
+//!
+//! ```
+//! use tpt_fem_io_vtk::PointData;
+//! use tpt_fem_mesh::{CellType, MeshBuilder};
+//!
+//! let mut b = MeshBuilder::new();
+//! let n0 = b.add_node(vec![0.0, 0.0]);
+//! let n1 = b.add_node(vec![1.0, 0.0]);
+//! let n2 = b.add_node(vec![0.0, 1.0]);
+//! b.add_element(CellType::Tri, vec![n0, n1, n2]);
+//! let mesh = b.build();
+//!
+//! let vtk = tpt_fem_io_vtk::mesh_to_vtk(&mesh, &[PointData::new("u", vec![0.0, 1.0, 1.0])]);
+//! if let vtkio::model::DataSet::UnstructuredGrid { pieces, .. } = &vtk.data {
+//!     if let vtkio::model::Piece::Inline(p) = &pieces[0] {
+//!         assert_eq!(p.num_points(), 3);
+//!     }
+//! }
+//! ```
+
+use std::path::Path;
+
+use tpt_fem_mesh::{CellType, Mesh, MeshBuilder};
+use vtkio::model::{
+    Attribute, Attributes, ByteOrder, Cells, DataArray, DataSet, ElementType, IOBuffer, Piece,
+    UnstructuredGridPiece, Version, VertexNumbers, Vtk,
+};
+
+/// A named per-node scalar field to embed in the output file.
+pub struct PointData {
+    /// Field name (as shown in ParaView).
+    pub name: String,
+    /// One value per mesh node.
+    pub values: Vec<f64>,
+}
+
+impl PointData {
+    /// Create a new point-data field.
+    pub fn new(name: impl Into<String>, values: Vec<f64>) -> Self {
+        PointData {
+            name: name.into(),
+            values,
+        }
+    }
+}
+
+/// Errors returned while writing or reading a VTK file.
+#[derive(Debug)]
+pub enum VtkError {
+    /// The underlying `vtkio` export or import failed.
+    Vtk(vtkio::Error),
+    /// An I/O error occurred while writing or reading the file.
+    Io(std::io::Error),
+    /// The VTK structure could not be mapped onto a `tpt-fem` mesh (e.g. not an
+    /// unstructured grid, unsupported cell type, or non-f64 coordinates).
+    Parse(String),
+}
+
+impl std::fmt::Display for VtkError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            VtkError::Vtk(e) => write!(f, "failed to write VTK file: {e}"),
+            VtkError::Io(e) => write!(f, "I/O error on VTK file: {e}"),
+            VtkError::Parse(e) => write!(f, "VTK parse error: {e}"),
+        }
+    }
+}
+
+impl std::error::Error for VtkError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            VtkError::Vtk(e) => Some(e),
+            VtkError::Io(e) => Some(e),
+            VtkError::Parse(_) => None,
+        }
+    }
+}
+
+impl From<vtkio::Error> for VtkError {
+    fn from(e: vtkio::Error) -> Self {
+        VtkError::Vtk(e)
+    }
+}
+
+impl From<std::io::Error> for VtkError {
+    fn from(e: std::io::Error) -> Self {
+        VtkError::Io(e)
+    }
+}
+
+fn vtk_cell_type(cell: CellType) -> vtkio::model::CellType {
+    match cell {
+        CellType::Line => vtkio::model::CellType::Line,
+        CellType::Tri => vtkio::model::CellType::Triangle,
+        CellType::Quad => vtkio::model::CellType::Quad,
+        CellType::Tet => vtkio::model::CellType::Tetra,
+        CellType::Hex => vtkio::model::CellType::Hexahedron,
+        CellType::Tri6 => vtkio::model::CellType::QuadraticTriangle,
+        CellType::Quad8 => vtkio::model::CellType::QuadraticQuad,
+        CellType::Quad9 => vtkio::model::CellType::BiquadraticQuad,
+        CellType::Tet10 => vtkio::model::CellType::QuadraticTetra,
+        CellType::Hex20 => vtkio::model::CellType::QuadraticHexahedron,
+        CellType::Hex27 => vtkio::model::CellType::TriquadraticHexahedron,
+    }
+}
+
+/// Build a [`Vtk`] unstructured-grid model from a `tpt-fem` mesh and any
+/// per-node scalar fields.
+pub fn mesh_to_vtk(mesh: &Mesh, point_data: &[PointData]) -> Vtk {
+    let mut points = Vec::with_capacity(mesh.node_count() * 3);
+    for n in &mesh.nodes {
+        for d in 0..3 {
+            points.push(*n.coords.get(d).unwrap_or(&0.0));
+        }
+    }
+
+    let mut vertices: Vec<u32> = Vec::new();
+    let mut types = Vec::new();
+    for e in &mesh.elements {
+        vertices.push(e.nodes.len() as u32);
+        for &nd in &e.nodes {
+            vertices.push(nd as u32);
+        }
+        types.push(vtk_cell_type(e.cell_type));
+    }
+
+    let point_attrs: Vec<Attribute> = point_data
+        .iter()
+        .map(|pd| {
+            Attribute::DataArray(DataArray {
+                name: pd.name.clone(),
+                elem: ElementType::Scalars {
+                    num_comp: 1,
+                    lookup_table: None,
+                },
+                data: IOBuffer::from(pd.values.clone()),
+            })
+        })
+        .collect();
+
+    Vtk {
+        version: Version::new((4, 1)),
+        byte_order: ByteOrder::BigEndian,
+        title: String::from("tpt-fem mesh"),
+        file_path: None,
+        data: DataSet::inline(UnstructuredGridPiece {
+            points: points.into(),
+            cells: Cells {
+                cell_verts: VertexNumbers::Legacy {
+                    num_cells: mesh.elements.len() as u32,
+                    vertices,
+                },
+                types,
+            },
+            data: Attributes {
+                point: point_attrs,
+                ..Default::default()
+            },
+        }),
+    }
+}
+
+/// Write the mesh (no scalar fields) as a binary legacy `.vtk` file.
+pub fn write_vtk(mesh: &Mesh, path: impl AsRef<Path>) -> Result<(), VtkError> {
+    Ok(mesh_to_vtk(mesh, &[]).export(path)?)
+}
+
+/// Write the mesh (no scalar fields) as an ASCII legacy `.vtk` file.
+pub fn write_vtk_ascii(mesh: &Mesh, path: impl AsRef<Path>) -> Result<(), VtkError> {
+    Ok(mesh_to_vtk(mesh, &[]).export_ascii(path)?)
+}
+
+/// Write the mesh together with per-node scalar fields as a `.vtk` file.
+pub fn write_vtk_with_data(
+    mesh: &Mesh,
+    point_data: &[PointData],
+    path: impl AsRef<Path>,
+) -> Result<(), VtkError> {
+    Ok(mesh_to_vtk(mesh, point_data).export(path)?)
+}
+
+/// Import a [`Mesh`] from a legacy `.vtk` / `.vtu` file.
+///
+/// Supports the linear and quadratic (`P2`) cell types written by `mesh_to_vtk`.
+/// This is the crate-level reader that was previously only vendored inside the
+/// `tpt-fem-cli` binary, so VTK round-tripping is now reachable from the
+/// umbrella crate and Python bindings, not just the CLI.
+pub fn read_vtk(path: impl AsRef<Path>) -> Result<Mesh, VtkError> {
+    let vtk = Vtk::import(path)?;
+    mesh_from_vtk(&vtk)
+}
+
+/// Convert an in-memory [`Vtk`] unstructured grid into a [`Mesh`].
+///
+/// Returns [`VtkError::Parse`] for non-unstructured grids, unsupported cell
+/// counts, or non-`f64` coordinate buffers.
+pub fn mesh_from_vtk(vtk: &Vtk) -> Result<Mesh, VtkError> {
+    let ds = &vtk.data;
+    let (points, cells) = match ds {
+        DataSet::UnstructuredGrid { pieces, .. } => match &pieces[0] {
+            Piece::Inline(p) => {
+                let pts = match &p.points {
+                    IOBuffer::F64(v) => v.clone(),
+                    _ => return Err(VtkError::Parse("unsupported point coordinate type".into())),
+                };
+                (pts, p.cells.clone())
+            }
+            _ => return Err(VtkError::Parse("expected inline VTK piece".into())),
+        },
+        _ => return Err(VtkError::Parse("expected unstructured grid".into())),
+    };
+    let np = points.len() / 3;
+    let mut b = MeshBuilder::new();
+    for i in 0..np {
+        b.add_node(vec![points[3 * i], points[3 * i + 1], points[3 * i + 2]]);
+    }
+    let verts = match &cells.cell_verts {
+        VertexNumbers::Legacy { vertices, .. } => vertices.clone(),
+        _ => return Err(VtkError::Parse("unsupported cell numbering".into())),
+    };
+    let mut i = 0;
+    while i < verts.len() {
+        let cnt = verts[i] as usize;
+        let cell = match cnt {
+            2 => CellType::Line,
+            3 => CellType::Tri,
+            4 => CellType::Quad,
+            6 => CellType::Tri6,
+            8 => CellType::Hex,
+            9 => CellType::Quad9,
+            10 => CellType::Tet10,
+            20 => CellType::Hex20,
+            27 => CellType::Hex27,
+            _ => {
+                return Err(VtkError::Parse(format!(
+                    "unsupported cell with {cnt} nodes"
+                )))
+            }
+        };
+        let nodes = verts[i + 1..i + 1 + cnt]
+            .iter()
+            .map(|&v| v as usize)
+            .collect();
+        b.add_element(cell, nodes);
+        i += 1 + cnt;
+    }
+    Ok(b.build())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tpt_fem_mesh::{CellType, MeshBuilder};
+    use vtkio::model::{DataSet, Piece, Vtk};
+
+    fn tri_mesh() -> Mesh {
+        let mut b = MeshBuilder::new();
+        let n0 = b.add_node(vec![0.0, 0.0]);
+        let n1 = b.add_node(vec![1.0, 0.0]);
+        let n2 = b.add_node(vec![0.0, 1.0]);
+        b.add_element(CellType::Tri, vec![n0, n1, n2]);
+        b.build()
+    }
+
+    #[test]
+    fn builds_correct_grid() {
+        let mesh = tri_mesh();
+        let vtk = mesh_to_vtk(&mesh, &[PointData::new("u", vec![0.0, 0.5, 1.0])]);
+        if let DataSet::UnstructuredGrid { pieces, .. } = &vtk.data {
+            if let Piece::Inline(p) = &pieces[0] {
+                assert_eq!(p.num_points(), 3);
+                assert_eq!(p.cells.num_cells(), 1);
+            }
+        } else {
+            panic!("expected unstructured grid");
+        }
+    }
+
+    #[test]
+    fn round_trips_through_file() {
+        let mesh = tri_mesh();
+        let dir = std::env::temp_dir();
+        let path = dir.join("tpt_fem_io_vtk_test.vtk");
+        write_vtk(&mesh, &path).expect("export");
+        let imported = Vtk::import(&path).expect("import");
+        if let DataSet::UnstructuredGrid { pieces, .. } = &imported.data {
+            if let Piece::Inline(p) = &pieces[0] {
+                assert_eq!(p.num_points(), 3);
+            }
+        } else {
+            panic!("expected unstructured grid");
+        }
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn read_vtk_round_trips_mesh() {
+        // Exercise the crate-level reader (promoted from the CLI in Phase 10c):
+        // write a mesh, read it back through `read_vtk`, and confirm topology
+        // survives the round-trip.
+        let mesh = tri_mesh();
+        let dir = std::env::temp_dir();
+        let path = dir.join("tpt_fem_io_vtk_read_test.vtk");
+        write_vtk(&mesh, &path).expect("export");
+        let imported = read_vtk(&path).expect("read_vtk");
+        assert_eq!(imported.node_count(), 3);
+        assert_eq!(imported.element_count(), 1);
+        assert_eq!(imported.elements[0].cell_type, CellType::Tri);
+        let _ = std::fs::remove_file(&path);
+    }
+}

@@ -1,0 +1,27 @@
+[package]
+name = "tpt-math-autodiff-fwd"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.84"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+description = "Forward-mode autodiff (dual numbers)."
+readme = "README.md"
+repository = "https://github.com/tpt-solutions/tpt-math"
+homepage = "https://github.com/tpt-solutions/tpt-math"
+documentation = "https://docs.rs/tpt-math-autodiff-fwd"
+keywords = ["autodiff", "dual-numbers", "forward-mode", "gradients", "no-std"]
+categories = ["mathematics", "science", "algorithms", "no-std"]
+
+[dependencies]
+tpt-math-numeric = { path = "../tpt-math-numeric", version = "0.1.0", default-features = false }
+
+[features]
+default = ["std"]
+std = ["tpt-math-numeric/std"]
+alloc = ["tpt-math-numeric/alloc"]
+
+
+[lints]
+rust = { unsafe_op_in_unsafe_fn = "warn", unsafe_code = "forbid" }
+clippy = { all = "warn" }

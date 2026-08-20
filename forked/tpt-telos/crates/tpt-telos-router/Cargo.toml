@@ -1,0 +1,17 @@
+[package]
+name = "tpt-telos-router"
+version = "0.2.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+rust-version = "1.74"
+authors = ["TPT Solutions"]
+repository = "https://github.com/tpt-solutions/tpt-telos"
+homepage = "https://github.com/tpt-solutions/tpt-telos"
+readme = "README.md"
+documentation = "https://docs.rs/tpt-telos-router"
+keywords = ["router", "codegen", "boundary", "dual-backend", "telos"]
+categories = ["compilers", "development-tools"]
+description = "Context router that classifies tpt-telos modules to Rust or Go backends"
+
+[dependencies]
+tpt-telos-parser = { path = "../tpt-telos-parser", version = "0.2.0" }

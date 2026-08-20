@@ -1,0 +1,48 @@
+{
+  "vendor": "Example Corp",
+  "gpu_model": "Example GPU X100",
+  "driver_version": "1.0.0",
+  "certification_tier": 2,
+  "certification_date": "2026-06-29T00:00:00Z",
+  "hardware_specs": {
+    "memory_gb": 32,
+    "memory_bandwidth_gbps": 900,
+    "compute_tflops_fp32": 40,
+    "compute_tflops_fp16": 80,
+    "tensor_cores": true
+  },
+  "supported_operations": {
+    "gemm": true,
+    "attention": true,
+    "conv2d": true,
+    "conv3d": false
+  },
+  "performance_baselines": {
+    "gemm_4096x4096_ms": 2.5,
+    "attention_1024x1024_ms": 1.8,
+    "conv2d_224x224_ms": 3.2
+  },
+  "tuning_parameters": {
+    "gemm": {
+      "tile_m": 128,
+      "tile_n": 128,
+      "tile_k": 32,
+      "vec_width": 4,
+      "unroll": 4
+    },
+    "attention": {
+      "tile_seq": 64,
+      "tile_head": 64
+    },
+    "conv2d": {
+      "tile_oh": 14,
+      "tile_ow": 14,
+      "tile_ic": 64
+    }
+  },
+  "contact": {
+    "name": "Jane Doe",
+    "email": "jane.doe@example.com",
+    "github": "janedoe"
+  }
+}

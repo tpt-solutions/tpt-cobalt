@@ -1,0 +1,19 @@
+[package]
+name = "tpt-gpu-ir-spec"
+version = "0.1.0"
+edition = "2021"
+description = "TPTIR dialect specification — ops, types, attributes, and stable text-format serialization"
+license = "MIT OR Apache-2.0 WITH LLVM-exception"
+authors = ["TPT Solutions"]
+repository = "https://github.com/tpt-solutions/tpt-gpu"
+documentation = "https://docs.rs/tpt-gpu-ir-spec"
+readme = "README.md"
+keywords = ["gpu", "compiler", "ir", "mlir", "tptir"]
+categories = ["compilers", "development-tools"]
+
+[features]
+default = []
+serde = ["dep:serde"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"], optional = true }

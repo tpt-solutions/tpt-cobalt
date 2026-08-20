@@ -1,0 +1,21 @@
+[package]
+name = "tpt-eng-plot"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+repository = "https://github.com/tpt-solutions/tpt-engineering"
+homepage = "https://github.com/tpt-solutions/tpt-engineering"
+rust-version = "1.85"
+description = "Plotting and diagram generation (PNG/SVG) for the TPT ecosystem, built on `plotters`."
+readme = "README.md"
+keywords = ["engineering", "plot", "chart", "visualization", "svg"]
+categories = ["science", "visualization", "graphics"]
+
+[dependencies]
+plotters = { version = "0.3", default-features = false, features = ["svg_backend", "bitmap_backend", "bitmap_encoder", "line_series", "point_series"] }
+thiserror = { version = "2" }
+
+[lints]
+rust = { unsafe_op_in_unsafe_fn = "warn", unsafe_code = "forbid" }
+clippy = { all = "warn", missing_errors_doc = "warn", missing_panics_doc = "warn" }

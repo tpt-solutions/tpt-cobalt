@@ -1,0 +1,41 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/cargo-tpt",
+    "crates/tpt-dag",
+    "crates/tpt-doc",
+    "crates/tpt-grad",
+    "crates/tpt-grad-macro",
+    "crates/tpt-io",
+    "crates/tpt-lab",
+    "crates/tpt-learn",
+    "crates/tpt-omni",
+    "crates/tpt-playground",
+    "crates/tpt-script",
+    "crates/tpt-stat",
+    "crates/tpt-sym",
+    "crates/tpt-ui",
+    "crates/tpt-ui-macro",
+    "crates/tpt-viz",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.81"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/tpt-org/tpt-rust6"
+
+[workspace.dependencies]
+tpt-omni = { path = "crates/tpt-omni" }
+tpt-io = { path = "crates/tpt-io" }
+tpt-sym = { path = "crates/tpt-sym" }
+tpt-grad-macro = { path = "crates/tpt-grad-macro" }
+tpt-ui-macro = { path = "crates/tpt-ui-macro" }
+arrow = "54"
+ndarray = { version = "0.16", features = ["rayon"] }
+rayon = "1"
+thiserror = "1"
+
+[profile.release]
+lto = "thin"

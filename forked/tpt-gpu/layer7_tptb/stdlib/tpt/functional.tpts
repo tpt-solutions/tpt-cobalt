@@ -1,0 +1,338 @@
+// tpt/functional.tpts — TPT Script Standard Library: Functional Operations
+//
+// Stateless functional implementations of activations, normalisation,
+// masking utilities, and other ops that don't fit neatly into nn.tpts.
+// All functions are pure (no side effects) unless otherwise documented.
+//
+// Usage: import tpt.functional
+
+import tpt
+
+// ---------------------------------------------------------------------------
+// Activation functions
+// ---------------------------------------------------------------------------
+
+@doc("Mish activation: x * tanh(softplus(x))")
+@input("x: Tensor[f32, *, *]", description="Input tensor")
+@output("Tensor[f32, *, *]", description="Activated tensor, same shape as x")
+@requires_gpu(true)
+@differentiable(true)
+@complexity("O(n)")
+fn mish(x: Tensor[f32, *, *]) -> Tensor[f32, *, *] {
+    let out = tpt.mish(x)
+    return out
+}
+
+@doc("HardSwish activation: x * relu6(x + 3) / 6 — mobile-friendly approximation to Swish")
+@input("x: Tensor[f32, *, *]", description="Input tensor")
+@output("Tensor[f32, *, *]", description="Activated tensor")
+@requires_gpu(true)
+@differentiable(true)
+@complexity("O(n)")
+fn hardswish(x: Tensor[f32, *, *]) -> Tensor[f32, *, *] {
+    let out = tpt.hardswish(x)
+    return out
+}
+
+@doc("Softplus activation: log(1 + exp(x)) — smooth approximation to ReLU")
+@input("x:    Tensor[f32, *, *]", description="Input tensor")
+@input("beta: f32",               description="Scaling factor (default 1.0)")
+@output("Tensor[f32, *, *]", description="Activated tensor")
+@requires_gpu(true)
+@differentiable(true)
+@complexity("O(n)")
+fn softplus(x: Tensor[f32, *, *], beta: f32) -> Tensor[f32, *, *] {
+    let out = tpt.div_scalar(tpt.softplus(tpt.mul_scalar(x, beta)), beta)
+    return out
+}
+
+@doc("Softsign activation: x / (1 + |x|)")
+@input("x: Tensor[f32, *, *]", description="Input tensor")
+@output("Tensor[f32, *, *]", description="Activated tensor in (-1, 1)")
+@requires_gpu(true)
+@differentiable(true)
+@complexity("O(n)")
+fn softsign(x: Tensor[f32, *, *]) -> Tensor[f32, *, *] {
+    let out = tpt.softsign(x)
+    return out
+}
+
+@doc("Log-sigmoid: log(sigmoid(x)) = -softplus(-x)")
+@input("x: Tensor[f32, *, *]", description="Input tensor")
+@output("Tensor[f32, *, *]", description="Log-sigmoid values (≤ 0)")
+@requires_gpu(true)
+@differentiable(true)
+@complexity("O(n)")
+fn log_sigmoid(x: Tensor[f32, *, *]) -> Tensor[f32, *, *] {
+    let out = tpt.log_sigmoid(x)
+    return out
+}
+
+@doc("GELU with tanh approximation (as used in GPT-2 and BERT): 0.5x(1 + tanh(sqrt(2/pi)(x + 0.044715x³)))")
+@input("x: Tensor[f32, *, *]", description="Input tensor")
+@output("Tensor[f32, *, *]", description="Activated tensor")
+@requires_gpu(true)
+@differentiable(true)
+@complexity("O(n)")
+fn gelu_tanh(x: Tensor[f32, *, *]) -> Tensor[f32, *, *] {
+    let out = tpt.gelu_tanh(x)
+    return out
+}
+
+@doc("SwiGLU: x * sigmoid(gate) — gated linear unit variant used in LLaMA / PaLM FFNs")
+@input("x:    Tensor[f32, *, *]", description="Main feature tensor")
+@input("gate: Tensor[f32, *, *]", description="Gate tensor (same shape as x)")
+@output("Tensor[f32, *, *]", description="Gated output")
+@requires_gpu(true)
+@differentiable(true)
+@complexity("O(n)")
+fn swiglu(x: Tensor[f32, *, *], gate: Tensor[f32, *, *]) -> Tensor[f32, *, *] {
+    let out = tpt.mul(x, tpt.sigmoid(gate))
+    return out
+}
+
+@doc("GLU (Gated Linear Unit): split x into two halves, return first_half * sigmoid(second_half)")
+@input("x:   Tensor[f32, *, *]", description="Input tensor — last dimension must be even")
+@input("dim: i64",               description="Dimension to split (default -1)")
+@output("Tensor[f32, *, *]", description="Gated output (last dim halved)")
+@requires_gpu(true)
+@differentiable(true)
+@complexity("O(n)")
+fn glu(x: Tensor[f32, *, *], dim: i64) -> Tensor[f32, *, *] {
+    let chunks = tpt.chunk(x, n=2, dim=dim)
+    let a      = chunks[0]
+    let b      = chunks[1]
+    let out    = tpt.mul(a, tpt.sigmoid(b))
+    return out
+}
+
+// ---------------------------------------------------------------------------
+// Dropout variants
+// ---------------------------------------------------------------------------
+
+@doc("Standard dropout: zero elements with probability p during training, scale by 1/(1-p).")
+@input("x:        Tensor[f32, *, *]", description="Input tensor")
+@input("p:        f32",               description="Drop probability in [0, 1)")
+@input("training: bool",              description="Apply only when true (identity at inference)")
+@output("Tensor[f32, *, *]", description="Randomly masked and scaled tensor")
+@requires_gpu(true)
+@differentiable(true)
+@complexity("O(n)")
+fn dropout(x: Tensor[f32, *, *], p: f32, training: bool) -> Tensor[f32, *, *] {
+    let out = tpt.dropout(x, p=p, training=training)
+    return out
+}
+
+@doc("Attention dropout: apply dropout to the attention weight matrix.")
+@input("weights:  Tensor[f32, *, *, *, *]", description="Attention weights: [batch, heads, seq_q, seq_k]")
+@input("p:        f32",                     description="Drop probability")
+@input("training: bool",                    description="Apply only during training")
+@output("Tensor[f32, *, *, *, *]", description="Masked attention weights")
+@requires_gpu(true)
+@differentiable(true)
+@complexity("O(n)")
+fn attention_dropout(weights: Tensor[f32, *, *, *, *], p: f32, training: bool) -> Tensor[f32, *, *, *, *] {
+    let out = tpt.dropout(weights, p=p, training=training)
+    return out
+}
+
+// ---------------------------------------------------------------------------
+// Attention masking utilities
+// ---------------------------------------------------------------------------
+
+@doc("Create a lower-triangular (causal) additive attention mask. Valid positions = 0, future = -inf.")
+@input("seq_len: i64",  description="Sequence length (creates a [seq_len, seq_len] mask)")
+@input("dtype:   dtype", description="Output dtype (default f32)")
+@output("Tensor[dtype, seq_len, seq_len]", description="Causal mask: 0 on / below diagonal, -inf above")
+@requires_gpu(false)
+@differentiable(false)
+@complexity("O(seq_len²)")
+fn causal_mask(seq_len: i64, dtype: dtype) -> Tensor[f32, *, *] {
+    let mask = tpt.causal_mask([seq_len, seq_len], dtype=dtype)
+    return mask
+}
+
+@doc("Create a boolean padding mask from per-sequence lengths (True = valid token).")
+@input("lengths: Tensor[i64, *]", description="Actual lengths for each sequence in the batch")
+@input("max_len: i64",            description="Padded sequence length")
+@output("Tensor[bool, *, *]", description="Boolean mask: [batch, max_len], True at valid positions")
+@requires_gpu(false)
+@differentiable(false)
+@complexity("O(batch * max_len)")
+fn padding_mask(lengths: Tensor[i64, *], max_len: i64) -> Tensor[bool, *, *] {
+    let mask = tpt.attention_mask(lengths, max_len=max_len)
+    return mask
+}
+
+// ---------------------------------------------------------------------------
+// Normalisation (functional)
+// ---------------------------------------------------------------------------
+
+@doc("Layer normalisation over the last dimension (functional, no learnable parameters).")
+@input("x:   Tensor[f32, *, *]", description="Input tensor")
+@input("eps: f32",               description="Numerical stability (default 1e-5)")
+@output("Tensor[f32, *, *]", description="Zero-mean, unit-variance normalised tensor")
+@requires_gpu(true)
+@differentiable(true)
+@complexity("O(n)")
+fn layer_norm_noparam(x: Tensor[f32, *, *], eps: f32) -> Tensor[f32, *, *] {
+    let mean = tpt.mean(x, dim=-1, keepdim=true)
+    let diff = tpt.sub(x, mean)
+    let var  = tpt.mean(tpt.mul(diff, diff), dim=-1, keepdim=true)
+    let out  = tpt.div(diff, tpt.sqrt(tpt.add_scalar(var, eps)))
+    return out
+}
+
+@doc("L2 normalise a tensor along a given dimension (unit sphere projection).")
+@input("x:   Tensor[f32, *, *]", description="Input tensor")
+@input("dim: i64",               description="Dimension to normalise (default -1)")
+@input("eps: f32",               description="Guard against division by zero (default 1e-12)")
+@output("Tensor[f32, *, *]", description="L2-normalised tensor")
+@requires_gpu(true)
+@differentiable(true)
+@complexity("O(n)")
+fn l2_normalize(x: Tensor[f32, *, *], dim: i64, eps: f32) -> Tensor[f32, *, *] {
+    let norm = tpt.add_scalar(tpt.norm(x, dim=dim, keepdim=true), eps)
+    let out  = tpt.div(x, norm)
+    return out
+}
+
+// ---------------------------------------------------------------------------
+// Loss utilities
+// ---------------------------------------------------------------------------
+
+@doc("Label smoothing cross-entropy: cross_entropy(logits, targets) with smoothed targets.")
+@input("logits:  Tensor[f32, *, *]", description="Logits: [batch, num_classes]")
+@input("targets: Tensor[i64, *]",    description="Ground-truth class indices: [batch]")
+@input("smoothing: f32",             description="Smoothing factor ε (e.g. 0.1)")
+@output("f32", description="Scalar smoothed cross-entropy loss")
+@requires_gpu(true)
+@differentiable(true)
+@complexity("O(batch * num_classes)")
+fn label_smooth_cross_entropy(logits: Tensor[f32, *, *], targets: Tensor[i64, *], smoothing: f32) -> f32 {
+    let n_classes = tpt.shape(logits)[1]
+    let log_probs = tpt.log_softmax(logits, dim=-1)
+    let nll       = tpt.nll_loss(log_probs, targets)
+    let smooth_l  = tpt.neg(tpt.mean(log_probs))
+    let loss      = (1.0 - smoothing) * nll + smoothing * smooth_l
+    return loss
+}
+
+@doc("Focal loss for class-imbalanced problems: -(1-pt)^gamma * log(pt).")
+@input("logits:  Tensor[f32, *, *]", description="Logits: [batch, num_classes]")
+@input("targets: Tensor[i64, *]",    description="Class indices: [batch]")
+@input("gamma:   f32",               description="Focusing exponent (default 2.0)")
+@input("alpha:   f32",               description="Balancing factor (default 1.0)")
+@output("f32", description="Scalar focal loss")
+@requires_gpu(true)
+@differentiable(true)
+@complexity("O(batch * num_classes)")
+fn focal_loss(logits: Tensor[f32, *, *], targets: Tensor[i64, *], gamma: f32, alpha: f32) -> f32 {
+    let probs     = tpt.softmax(logits, dim=-1)
+    let log_probs = tpt.log(tpt.add_scalar(probs, 1e-8))
+    let nll       = tpt.nll_loss(log_probs, targets)
+    let pt        = tpt.exp(tpt.neg(nll))
+    let focal     = tpt.mul_scalar(tpt.mul_scalar(tpt.pow(tpt.sub_scalar(pt, 1.0), gamma), -1.0), alpha)
+    let loss      = tpt.mul(focal, nll)
+    return tpt.mean(loss)
+}
+
+// ---------------------------------------------------------------------------
+// Encoding utilities
+// ---------------------------------------------------------------------------
+
+@doc("One-hot encode integer class indices into binary vectors.")
+@input("indices:     Tensor[i64, *]", description="Integer class indices: [batch]")
+@input("num_classes: i64",            description="Total number of classes")
+@output("Tensor[f32, *, *]", description="One-hot matrix: [batch, num_classes]")
+@requires_gpu(false)
+@differentiable(false)
+@complexity("O(batch * num_classes)")
+fn one_hot(indices: Tensor[i64, *], num_classes: i64) -> Tensor[f32, *, *] {
+    let out = tpt.one_hot(indices, num_classes=num_classes)
+    return out
+}
+
+@doc("Sinusoidal positional encoding (Vaswani et al. 2017).")
+@input("seq_len: i64", description="Sequence length")
+@input("d_model: i64", description="Model/embedding dimension (must be even)")
+@input("dtype:   dtype", description="Output dtype (default f32)")
+@output("Tensor[f32, *, *]", description="Positional encoding matrix: [seq_len, d_model]")
+@requires_gpu(false)
+@differentiable(false)
+@complexity("O(seq_len * d_model)")
+fn sinusoidal_pe(seq_len: i64, d_model: i64, dtype: dtype) -> Tensor[f32, *, *] {
+    let positions  = tpt.reshape(tpt.cast(tpt.arange(0, seq_len), dtype=f32), [seq_len, 1])
+    let dims       = tpt.reshape(tpt.cast(tpt.arange(0, d_model / 2), dtype=f32), [1, d_model / 2])
+    let div_term   = tpt.exp(tpt.mul_scalar(dims, -2.0 * 9.21034037 / tpt.cast(d_model, dtype=f32)))
+    let angles     = tpt.mul(positions, div_term)
+    let sin_vals   = tpt.sin(angles)
+    let cos_vals   = tpt.cos(angles)
+    let pe         = tpt.concat([sin_vals, cos_vals], dim=1)
+    let out        = tpt.cast(pe, dtype=dtype)
+    return out
+}
+
+// ---------------------------------------------------------------------------
+// Gradient utilities
+// ---------------------------------------------------------------------------
+
+@doc("Clip gradient L2-norm to max_norm (in-place scale if norm > max_norm).")
+@input("grad:     Tensor[f32, *]", description="Gradient tensor to clip")
+@input("max_norm: f32",            description="Maximum allowed L2 norm")
+@output("Tensor[f32, *]", description="Norm-clipped gradient")
+@requires_gpu(true)
+@differentiable(false)
+@complexity("O(n)")
+fn clip_grad_norm(grad: Tensor[f32, *], max_norm: f32) -> Tensor[f32, *] {
+    let out = tpt.clip_grad_norm(grad, max_norm=max_norm)
+    return out
+}
+
+@doc("Element-wise clip gradient values to [-clip_val, +clip_val].")
+@input("grad:     Tensor[f32, *]", description="Gradient tensor")
+@input("clip_val: f32",            description="Clip magnitude (symmetric)")
+@output("Tensor[f32, *]", description="Clipped gradient")
+@requires_gpu(true)
+@differentiable(false)
+@complexity("O(n)")
+fn clip_grad_value(grad: Tensor[f32, *], clip_val: f32) -> Tensor[f32, *] {
+    let out = tpt.clip(grad, min=-clip_val, max=clip_val)
+    return out
+}
+
+// ---------------------------------------------------------------------------
+// Metric utilities
+// ---------------------------------------------------------------------------
+
+@doc("Classification accuracy: fraction of predictions matching ground-truth labels.")
+@input("logits:  Tensor[f32, *, *]", description="Logits: [batch, num_classes]")
+@input("targets: Tensor[i64, *]",    description="True class indices: [batch]")
+@output("f32", description="Accuracy in [0, 1]")
+@requires_gpu(true)
+@differentiable(false)
+@complexity("O(batch * num_classes)")
+fn accuracy(logits: Tensor[f32, *, *], targets: Tensor[i64, *]) -> f32 {
+    let preds   = tpt.argmax(logits, dim=-1)
+    let correct = tpt.cast(tpt.eq(preds, targets), dtype=f32)
+    let acc     = tpt.mean(correct)
+    return acc
+}
+
+@doc("Top-K accuracy: fraction of examples where the true class appears in the top-k predictions.")
+@input("logits:  Tensor[f32, *, *]", description="Logits: [batch, num_classes]")
+@input("targets: Tensor[i64, *]",    description="True class indices: [batch]")
+@input("k:       i64",               description="K value (e.g. 5 for top-5 accuracy)")
+@output("f32", description="Top-K accuracy in [0, 1]")
+@requires_gpu(true)
+@differentiable(false)
+@complexity("O(batch * num_classes * log(k))")
+fn topk_accuracy(logits: Tensor[f32, *, *], targets: Tensor[i64, *], k: i64) -> f32 {
+    let topk_vals    = tpt.topk(logits, k=k, dim=-1, largest=true)
+    let topk_indices = topk_vals[1]
+    let targets_exp  = tpt.unsqueeze(targets, dim=-1)
+    let targets_rep  = tpt.expand(targets_exp, [-1, k])
+    let correct      = tpt.any(tpt.eq(topk_indices, targets_rep), dim=-1)
+    let acc          = tpt.mean(tpt.cast(correct, dtype=f32))
+    return acc
+}

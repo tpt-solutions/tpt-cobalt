@@ -1,0 +1,48 @@
+# Problem shapes for ResNet-50 training (ImageNet, batch 64).
+[target]
+gpu = "sim"
+label = "resnet50-training"
+
+[run]
+warmup = 5
+iterations = 20
+
+# Conv layers (representative subset)
+[[workload]]
+kind = "conv2d"
+batch = [64]
+channels_in = [3]
+channels_out = [64]
+spatial = [224]
+kernel_size = [7]
+
+[[workload]]
+kind = "conv2d"
+batch = [64]
+channels_in = [64]
+channels_out = [64]
+spatial = [56]
+kernel_size = [3]
+
+[[workload]]
+kind = "conv2d"
+batch = [64]
+channels_in = [128]
+channels_out = [256]
+spatial = [28]
+kernel_size = [1]
+
+[[workload]]
+kind = "conv2d"
+batch = [64]
+channels_in = [256]
+channels_out = [512]
+spatial = [14]
+kernel_size = [3]
+
+# FC layer
+[[workload]]
+kind = "gemm"
+M = [64]
+N = [1000]
+K = [2048]

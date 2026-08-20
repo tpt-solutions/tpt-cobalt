@@ -1,0 +1,241 @@
+DESIGN DOCUMENT: tpt-formal (FORMAL VERIFICATION FOUNDATION)
+
+BEFORE YOU WRITE ANYTHING BELOW: check tpt-rust-map/registry.toml (in the
+sibling tpt-rust-map repo) for an existing foundation or external crate
+before adding a new one here. Every crate name in this repo carries the
+tpt-for- prefix. A crate is only a valid wrap target if its CURRENT
+license is MIT OR Apache-2.0 (or more permissive) — Apache-2.0-ONLY is
+always disqualifying, no exceptions (see tpt-rust-map/docs/adr/0007). If
+it passes that check, default to wrapping; reimplementation still needs
+one written reason. Prefer many small crates + a thin umbrella crate over
+one broad crate. Every crate: license = "MIT OR Apache-2.0".
+
+PROJECT OVERVIEW
+tpt-formal consolidates tpt-solutions' formal-verification and design-by-
+contract primitives — currently spread across tpt-zero-formal (~16
+contract/type-safety crates) and tpt-formal-lab (~8 verification crates) —
+into one dedicated repo. This pillar was added after the audit turned up a
+substantial, distinct body of work in this space that deserved the same
+treatment as Math/Science/Engineering, not a fold-in. Every safety-critical
+vertical in tpt-solutions (tpt-flight-control, tpt-dynamo, tpt-vanguard,
+tpt-chassis, tpt-servo, tpt-relay, and others) is a plausible future
+consumer of these primitives.
+
+ECOSYSTEM GAP JUSTIFICATION
+Design-by-contract, refinement types, type-level safety encoding, and
+deterministic verification tooling are not well served by mature, broadly-
+adopted permissive crates in the Rust ecosystem the way linear algebra or
+statistics are — this is largely genuine build territory, not wrap
+territory. Where an external crate does exist for a piece of this (e.g. an
+SMT solver binding for tpt-for-smt-lite's bridge), prefer wrapping it — see
+the per-crate wrap-candidate notes in CRATE INVENTORY below for the specific
+findings (SMT bridge, compile-time assertions, and two typestate facets all
+have live wrap candidates; design-by-contract and deterministic-sim were
+checked and confirmed as build territory).
+tpt-formal-lab's tpt-exact-math does NOT live here — it moved to tpt-math
+as tpt-math-exact, since exact/interval arithmetic is a numeric primitive
+useful far beyond formal verification.
+
+CORE PRINCIPLES
+The grouping below consolidates ~24 legacy crates into 13, merging facets
+that are genuinely inseparable (a contract system needs pre/post/invariant
+together to be coherent; type-level safety encoding techniques like
+phantom/ghost/newtype/bounded are facets of one toolkit) while keeping
+everything else at its existing one-crate-one-technique granularity. This
+grouping is a judgment call, not derived from audit evidence the way
+Math's tpt-math-prob-* split was — see docs/adr/0006 in tpt-rust-map. Split
+further, per-crate, the moment a grouped facet wants independent
+versioning sooner than expected; don't force a merge a real consumer is
+fighting. Dual-licensed MIT OR Apache-2.0. no_std where the underlying
+legacy crate was already no_std (marked per crate below) — most of this
+pillar's contract/type-safety primitives are no_std by nature since they're
+meant to be usable in the embedded/safety-critical verticals that motivate
+this pillar. Six further crates (tpt-for-model-check, tpt-for-sat,
+tpt-for-vcgen, tpt-for-abstract-interp, tpt-for-symbolic-exec,
+tpt-for-runtime-verify) were added after a later ecosystem-gap pass found
+verification techniques the 13-crate consolidation didn't cover at all —
+these have no legacy predecessor, so they sit outside the "~24 into 13"
+consolidation count: 13 consolidated + 6 new = 19 total.
+
+CRATE INVENTORY
+
+  tpt-for-contract
+    Build: consolidates precond/postcond/invariant/loop-inv — tightly
+    coupled facets of one design-by-contract concern. no_std. Consolidates
+    tpt-zero-formal's tpt-zero-precond, tpt-zero-postcond,
+    tpt-zero-invariant, tpt-zero-loop-inv. Depends on: tpt-math-numeric.
+    Wrap check: `contracts`, the ecosystem's most popular design-by-contract
+    crate, is MPL-2.0 — disqualified. No compatible alternative found;
+    confirms build-not-wrap here.
+
+  tpt-for-refinement
+    Build: refinement types. no_std. Consolidates tpt-zero-formal's
+    tpt-zero-refinement. Depends on: tpt-for-contract.
+
+  tpt-for-typestate
+    Build: consolidates type-level/phantom/ghost/newtype/bounded/safe-cast
+    — one coherent "type-level safety encoding" toolkit. no_std.
+    Consolidates tpt-zero-formal's tpt-zero-type-level, tpt-zero-phantom,
+    tpt-zero-ghost, tpt-zero-newtype, tpt-zero-bounded, tpt-zero-safe-cast.
+    Wrap candidates: `bounded-integer` (ISC, no_std) for the bounded facet;
+    `nutype` (MIT, gained no_std support in recent releases — verify against
+    this workspace's rust-version 1.75 before adopting) for newtype/safe-cast.
+    `typestate` (MIT OR Apache-2.0) exists but is pre-1.0 and covers only
+    state-machine typestate, not the full toolkit — doesn't override build.
+
+  tpt-for-witness
+    Build: witness types. no_std. Consolidates tpt-zero-formal's
+    tpt-zero-witness. Depends on: tpt-for-typestate.
+
+  tpt-for-assert-const
+    Build: compile-time assertions. no_std. Consolidates tpt-zero-formal's
+    tpt-zero-assert-const.
+    Wrap candidate: `static_assertions` (MIT OR Apache-2.0, no_std, stable
+    at 1.1.0 for years) does exactly this — prefer wrapping; reimplementation
+    needs a written reason.
+
+  tpt-for-smt-lite
+    Build: lightweight SMT bridge. Consolidates tpt-zero-formal's
+    tpt-zero-smt-lite and tpt-formal-lab's out-smt-bridge. Wrap candidates:
+    `easy-smt` (MIT OR Apache-2.0) — subprocess SMT-LIB2 term/assertion
+    builder driving any SMT-LIB2 solver binary, matches this crate's scope
+    closely; primary pick. `rsmt2` (MIT/Apache-2.0) — heavier alternative
+    with solver-specific extensions, fallback if easy-smt proves too thin.
+    `z3` (MIT, official Microsoft bindings) — only if an in-process solver
+    is needed instead of a subprocess; heavier build (links Z3's C++ lib).
+    Rejected: no serious Yices2 binding exists, and Yices2 itself is
+    GPLv3 — any wrap would be tainted regardless of the binding's license.
+
+  tpt-for-verified-ode
+    Build: verified ODE solving, pairs with tpt-science's tpt-sci-ode.
+    Consolidates tpt-formal-lab's tpt-verified-ode. Depends on:
+    tpt-sci-ode (from the tpt-science repo), tpt-for-contract.
+
+  tpt-for-verified-algorithms
+    Build: verified algorithm implementations. Consolidates
+    tpt-formal-lab's tpt-verified-algorithms. Depends on: tpt-for-contract.
+
+  tpt-for-proof-ast
+    Build: proof AST representation. Consolidates tpt-formal-lab's
+    tpt-proof-ast. Watch: `egg` (MIT, e-graph/equality-saturation) may be
+    relevant if this needs rewriting/equality reasoning over the AST rather
+    than pure representation — open question, not decided here.
+
+  tpt-for-det-proptest
+    Build: deterministic property-based testing. Consolidates
+    tpt-formal-lab's tpt-det-proptest. Wrap candidate: `bolero` (MIT) —
+    fuzz/property front-end with deterministic corpus replay across
+    libfuzzer/AFL/honggfuzz; could sit underneath a thin wrapper that pins
+    seeds/config for CI determinism instead of hand-rolled generators.
+
+  tpt-for-deterministic-sim
+    Build: deterministic simulation harness. Consolidates tpt-formal-lab's
+    tpt-deterministic-sim. Wrap candidates: `turmoil` (tokio-rs, MIT) for
+    deterministic multi-host network/fault simulation; `loom` (tokio-rs,
+    MIT) for concurrency permutation testing — complementary, not
+    overlapping. Rejected: `madsim` is the closest single-crate fit but is
+    Apache-2.0-only — disqualified per ADR 0007, no exceptions.
+
+  tpt-for-redundancy
+    Build: redundancy/fault-tolerance primitives. no_std. Consolidates
+    tpt-formal-lab's tpt-redundancy.
+
+  tpt-for-trace-macros
+    Build: trace/instrumentation macros for verification. no_std.
+    Consolidates tpt-formal-lab's tpt-trace-macros.
+
+  tpt-for-model-check
+    Build: explicit-state model checking (safety/liveness/linearizability)
+    for concurrent/distributed protocol logic — exhaustive state-space
+    search, distinct from tpt-for-deterministic-sim's sampled simulation and
+    tpt-for-det-proptest's random property testing. No legacy predecessor in
+    tpt-zero-formal/tpt-formal-lab — new capability, not a consolidation.
+    Wrap: `stateright` (MIT, 14.4M downloads, actively maintained, last
+    published 2025-07) — actor library with an embedded exhaustive model
+    checker and linearizability tester; a genuinely excellent, mature
+    alternative already exists, so wrap it rather than rebuild it.
+    NOT YET checked against tpt-rust-map/registry.toml (sibling repo
+    unavailable in this environment) — do that before registering.
+
+  tpt-for-sat
+    Build: from-scratch, pure-Rust CDCL SAT solver — a lighter-weight layer
+    under/alongside the SMT bridge for pure-boolean verification conditions,
+    and useful standalone for bounded model checking's boolean encoding. No
+    legacy predecessor — new capability. Checked and rejected as dependencies
+    (not as design references): `cadical`/`rustsat-cadical` (MIT, excellent,
+    but FFI to C++ — wrong shape for a pillar feeding embedded/safety-
+    critical verticals, regardless of license); `varisat` (MIT/Apache-2.0,
+    but unpublished since 2020-09 — too stale to trust for a correctness-
+    critical solver engine); `splr` (MPL-2.0, disqualified outright);
+    `batsat` (MIT, pure Rust, no FFI — closest fit shape-wise, but a
+    single-maintainer, MiniSat-vintage port, not competitive with a modern
+    CDCL solver). Written reason to build: no modern, actively-maintained,
+    competitive, pure-Rust (no native-library link) CDCL solver exists in
+    the ecosystem. NOT YET checked against tpt-rust-map/registry.toml.
+
+  tpt-for-vcgen
+    Build: verification-condition generation — computes weakest-
+    precondition-style proof obligations from tpt-for-contract's pre/post/
+    invariant annotations, to hand to tpt-for-smt-lite as dischargeable
+    goals. No legacy predecessor — this is the missing link that turns
+    "we have contracts" and "we have an SMT bridge" into an actual
+    "prove this function correct" pipeline; neither existing crate connects
+    to the other today. Checked directly: no Rust crate for this exists at
+    all (Why3 and Boogie are the classic tools for this technique, but both
+    are separate languages/toolchains, not Cargo dependencies — Boogie is
+    MIT but its own IL, Why3 is LGPL). Clean whitespace, not a case of
+    "something exists but is weak." NOT YET checked against
+    tpt-rust-map/registry.toml.
+
+  tpt-for-abstract-interp
+    Build: generic abstract-interpretation framework (interval/sign/other
+    numeric domains, fixpoint iteration) for static analysis of numeric/
+    control-flow properties, complementing tpt-for-vcgen/tpt-for-smt-lite
+    for properties that don't need full first-order reasoning. No legacy
+    predecessor. Only real prior art: `sparta` (MIT, a Rust port of Meta's
+    C++ abstract-interpretation library behind ReDex) — license is clean,
+    but it self-describes as experimental with an unstable API, has
+    negligible adoption (3,956 downloads total), and hasn't published since
+    2023-05. Written reason to build: not a foundation to build a
+    safety-critical verification pillar on. NOT YET checked against
+    tpt-rust-map/registry.toml.
+
+  tpt-for-symbolic-exec
+    Build: whole-program symbolic execution over compiled code for bug-
+    finding/property-proving — a different technique from model checking
+    (protocol/actor state space) and SAT (pure boolean formulas). No legacy
+    predecessor. Only real candidate: `haybale` (MIT end to end, including
+    its boolector/Boolector dependency) — license is clean, but single-lab
+    maintainer (PLSysSec) and thin adoption (27.7K total / 124 recent
+    downloads). Written reason to build: not broadly-adopted/actively-
+    maintained enough to build safety-critical tooling on top of. Worth
+    reading as a design reference (LLVM-IR-level symbolic execution over an
+    SMT backend is sound, well-trodden) without taking it as a dependency.
+    NOT YET checked against tpt-rust-map/registry.toml.
+
+  tpt-for-runtime-verify
+    Build: checks a temporal/stream specification against live event data —
+    distinct from tpt-for-trace-macros, which emits instrumentation but
+    checks nothing. No legacy predecessor. Only real candidate:
+    `rtlola-interpreter` (CISPA/Saarland) — Apache-2.0-ONLY, disqualified per
+    ADR 0007 no exceptions, and niche (24K downloads) independent of the
+    license problem. Written reason to build: no MIT/Apache-2.0-or-more-
+    permissive option exists. Clean-room note: if RTLola's public spec is
+    used as a design reference, implement independently from the published
+    algorithm, not by porting its Apache-2.0-only source — keeps the
+    resulting dual-license claim honest. NOT YET checked against
+    tpt-rust-map/registry.toml.
+
+GROUPING CAVEAT
+This 19-crate split (13 original + 6 added after further ecosystem-gap
+research — see the six entries above for wrap/build rationale) is
+provisional (see tpt-rust-map/docs/adr/0006). If,
+during implementation, tpt-for-refinement or tpt-for-witness turn out to
+need independent release cadence sooner than expected, split them out of
+tpt-for-contract/tpt-for-typestate respectively rather than forcing the
+merge.
+
+REPO CONVENTIONS
+Cargo workspace under crates/, one crate per directory, seeded from
+tpt-rust-map/template/. Every crate registered in tpt-rust-map/registry.toml
+before implementation starts.

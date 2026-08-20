@@ -1,0 +1,15 @@
+[package]
+name = "tpt-ui"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.81"
+license = "MIT OR Apache-2.0"
+description = "Serverless Wasm dashboard generator (#[tpt_app] macro)"
+
+[dependencies]
+tpt-ui-macro = { path = "../tpt-ui-macro" }
+
+[features]
+default = []
+# Browser backend scaffolding. Off by default to keep the crate DOM-free.
+wasm = []

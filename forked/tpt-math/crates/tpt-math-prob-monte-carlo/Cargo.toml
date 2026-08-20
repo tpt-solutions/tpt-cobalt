@@ -1,0 +1,25 @@
+[package]
+name = "tpt-math-prob-monte-carlo"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.84"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+description = "Monte Carlo methods."
+readme = "README.md"
+repository = "https://github.com/tpt-solutions/tpt-math"
+homepage = "https://github.com/tpt-solutions/tpt-math"
+documentation = "https://docs.rs/tpt-math-prob-monte-carlo"
+keywords = ["monte-carlo", "simulation", "sampling", "statistics", "numerical"]
+categories = ["mathematics", "science", "algorithms", "simulation"]
+
+[dependencies]
+tpt-math-prob-core = { path = "../tpt-math-prob-core", version = "0.1.0", default-features = false, features = ["std"] }
+
+[features]
+default = []
+
+
+[lints]
+rust = { unsafe_op_in_unsafe_fn = "warn", unsafe_code = "forbid" }
+clippy = { all = "warn" }

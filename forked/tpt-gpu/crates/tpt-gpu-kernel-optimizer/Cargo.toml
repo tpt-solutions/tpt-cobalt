@@ -1,0 +1,28 @@
+[package]
+name = "tpt-gpu-kernel-optimizer"
+version = "0.1.0"
+edition = "2021"
+authors = ["TPT Solutions"]
+license = "MIT OR Apache-2.0 WITH LLVM-exception"
+description = "Self-iterating TPT GPU kernel parameter optimizer"
+repository = "https://github.com/tpt-solutions/tpt-gpu"
+documentation = "https://docs.rs/tpt-gpu-kernel-optimizer"
+readme = "README.md"
+keywords = ["gpu", "kernels", "optimization", "autotuning", "hpc"]
+categories = ["command-line-utilities", "development-tools"]
+
+[lib]
+name = "tpt_gpu_kernel_optimizer"
+path = "src/lib.rs"
+
+[[bin]]
+name = "tpt-gpu-kernel-optimizer"
+path = "src/main.rs"
+
+[dependencies]
+tpt-gpu-shared = { path = "../tpt-gpu-shared", version = "0.1.0" }
+serde = { version = "1", features = ["derive"] }
+serde_json = { workspace = true }
+clap = { version = "4", features = ["derive"] }
+chrono = { version = "0.4", features = ["serde"] }
+anyhow = { version = "1" }

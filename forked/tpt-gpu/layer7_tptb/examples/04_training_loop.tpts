@@ -1,0 +1,221 @@
+// 04_training_loop.tpts — Complete supervised training loop in TPT Script.
+//
+// Implements a minimal end-to-end training workflow:
+//   - Forward pass through a two-layer MLP
+//   - Cross-entropy loss
+//   - Backward pass (gradient computation)
+//   - AdamW parameter update
+//   - Checkpoint saving every N steps
+//
+// The training loop itself runs on the host; forward / backward pass
+// and the loss computation run on the GPU.
+
+import tpt
+
+// ---------------------------------------------------------------------------
+// Two-layer MLP
+// ---------------------------------------------------------------------------
+
+@doc("Two-layer MLP: ReLU(x·W1ᵀ + b1)·W2ᵀ + b2")
+@input("x:  Tensor[f32, *, *]",  description="Input batch: [batch, in_features]")
+@input("w1: Tensor[f32, *, *]",  description="Hidden layer weight: [hidden, in_features]")
+@input("b1: Tensor[f32, *]",     description="Hidden layer bias: [hidden]")
+@input("w2: Tensor[f32, *, *]",  description="Output layer weight: [n_classes, hidden]")
+@input("b2: Tensor[f32, *]",     description="Output layer bias: [n_classes]")
+@output("Tensor[f32, *, *]",      description="Logits: [batch, n_classes]")
+@requires_gpu(true)
+@complexity("O(batch * hidden * (in_features + n_classes))")
+fn mlp_forward(x:  Tensor[f32, *, *],
+               w1: Tensor[f32, *, *], b1: Tensor[f32, *],
+               w2: Tensor[f32, *, *], b2: Tensor[f32, *]) -> Tensor[f32, *, *] {
+    let h1  = tpt.broadcast_add(tpt.matmul_2d(x, tpt.transpose(w1)), b1)
+    let h1r = tpt.relu(h1)
+    let out = tpt.broadcast_add(tpt.matmul_2d(h1r, tpt.transpose(w2)), b2)
+    return out
+}
+
+// ---------------------------------------------------------------------------
+// Cross-entropy loss
+// ---------------------------------------------------------------------------
+
+@doc("Sparse cross-entropy loss: mean(-log(softmax(logits)[targets])).")
+@input("logits:  Tensor[f32, *, *]", description="Unnormalised log-probabilities: [batch, n_classes]")
+@input("targets: Tensor[i64, *]",   description="Class indices: [batch]")
+@output("f32", description="Scalar mean cross-entropy loss")
+@requires_gpu(true)
+@complexity("O(batch * n_classes)")
+fn cross_entropy(logits: Tensor[f32, *, *], targets: Tensor[i64, *]) -> f32 {
+    let probs   = tpt.softmax(logits, dim=-1)
+    let log_p   = tpt.log(tpt.add_scalar(probs, 1e-7))
+    let ce      = tpt.nll_loss(log_p, targets)
+    return ce
+}
+
+// ---------------------------------------------------------------------------
+// AdamW parameter update (single param tensor)
+// ---------------------------------------------------------------------------
+
+@doc("In-place AdamW update for one parameter tensor.")
+@input("param:   Tensor[f32, *]", description="Parameter to update (in-place)")
+@input("grad:    Tensor[f32, *]", description="Gradient of loss wrt param")
+@input("m:       Tensor[f32, *]", description="First moment estimate (updated in-place)")
+@input("v:       Tensor[f32, *]", description="Second moment estimate (updated in-place)")
+@input("step:    i64",             description="Current optimiser step (1-indexed)")
+@input("lr:      f32",             description="Learning rate")
+@input("beta1:   f32",             description="First moment decay (e.g. 0.9)")
+@input("beta2:   f32",             description="Second moment decay (e.g. 0.999)")
+@input("eps:     f32",             description="Numerical stability term (e.g. 1e-8)")
+@input("wd:      f32",             description="Weight decay (decoupled, e.g. 0.01)")
+@output("Tensor[f32, *]", description="Updated param tensor")
+@requires_gpu(true)
+@complexity("O(n)")
+fn adamw_step(param: Tensor[f32, *], grad:  Tensor[f32, *],
+              m:     Tensor[f32, *], v:     Tensor[f32, *],
+              step:  i64, lr: f32, beta1: f32, beta2: f32,
+              eps:   f32, wd: f32) -> Tensor[f32, *] {
+    // Decoupled weight decay.
+    let param_wd = tpt.mul_scalar(param, 1.0 - lr * wd)
+
+    // Moment updates.
+    let m_new = tpt.add(tpt.mul_scalar(m, beta1), tpt.mul_scalar(grad, 1.0 - beta1))
+    let v_new = tpt.add(tpt.mul_scalar(v, beta2),
+                         tpt.mul_scalar(tpt.mul(grad, grad), 1.0 - beta2))
+
+    // Bias correction.
+    let step_f  = tpt.cast(step, dtype=f32)
+    let bc1     = 1.0 - tpt.pow(beta1, step_f)
+    let bc2     = 1.0 - tpt.pow(beta2, step_f)
+    let m_hat   = tpt.div_scalar(m_new, bc1)
+    let v_hat   = tpt.div_scalar(v_new, bc2)
+
+    // Parameter update.
+    let denom   = tpt.add_scalar(tpt.sqrt(v_hat), eps)
+    let update  = tpt.mul_scalar(tpt.div(m_hat, denom), lr)
+    let out     = tpt.sub(param_wd, update)
+    return out
+}
+
+// ---------------------------------------------------------------------------
+// Accuracy metric
+// ---------------------------------------------------------------------------
+
+@doc("Classification accuracy: fraction of logit argmaxes that match targets.")
+@input("logits:  Tensor[f32, *, *]", description="Logits: [batch, n_classes]")
+@input("targets: Tensor[i64, *]",    description="True class indices: [batch]")
+@output("f32", description="Accuracy in [0, 1]")
+@requires_gpu(true)
+@complexity("O(batch * n_classes)")
+fn accuracy(logits: Tensor[f32, *, *], targets: Tensor[i64, *]) -> f32 {
+    let preds   = tpt.argmax(logits, dim=-1)
+    let correct = tpt.cast(tpt.eq(preds, targets), dtype=f32)
+    let acc     = tpt.mean(correct)
+    return acc
+}
+
+// ---------------------------------------------------------------------------
+// Training loop (host)
+// ---------------------------------------------------------------------------
+
+@doc("Full supervised training loop for the two-layer MLP.")
+@input("train_data:   DataLoader", description="Training batches (x, y)")
+@input("val_data:     DataLoader", description="Validation batches (x, y)")
+@input("in_features:  i64",        description="Input dimension")
+@input("hidden:       i64",        description="Hidden layer width")
+@input("n_classes:    i64",        description="Number of output classes")
+@input("n_epochs:     i64",        description="Training epochs")
+@input("lr:           f32",        description="Learning rate")
+@input("ckpt_dir:     [u8]",       description="Directory to write checkpoints")
+@output("bool", description="true on successful completion")
+@requires_gpu(false)
+fn train(train_data:  DataLoader,
+         val_data:    DataLoader,
+         in_features: i64,
+         hidden:      i64,
+         n_classes:   i64,
+         n_epochs:    i64,
+         lr:          f32,
+         ckpt_dir:    [u8]) -> bool {
+    // Initialise weights (Kaiming uniform).
+    let w1 = tpt.kaiming_uniform([hidden, in_features], dtype=f32)
+    let b1 = tpt.zeros([hidden],              dtype=f32)
+    let w2 = tpt.kaiming_uniform([n_classes, hidden], dtype=f32)
+    let b2 = tpt.zeros([n_classes],           dtype=f32)
+
+    // Initialise AdamW moments.
+    let m_w1 = tpt.zeros_like(w1)
+    let v_w1 = tpt.zeros_like(w1)
+    let m_b1 = tpt.zeros_like(b1)
+    let v_b1 = tpt.zeros_like(b1)
+    let m_w2 = tpt.zeros_like(w2)
+    let v_w2 = tpt.zeros_like(w2)
+    let m_b2 = tpt.zeros_like(b2)
+    let v_b2 = tpt.zeros_like(b2)
+
+    let beta1 = 0.9
+    let beta2 = 0.999
+    let eps   = 1e-8
+    let wd    = 0.01
+    let step  = 0
+
+    for epoch in 0..n_epochs {
+        // --- Training ---
+        let train_loss = 0.0
+        let n_batches  = 0
+        for batch in train_data {
+            let x       = tpt.batch_x(batch)
+            let targets = tpt.batch_y(batch)
+            let step    = step + 1
+
+            // Forward pass.
+            let logits  = mlp_forward(x, w1, b1, w2, b2)
+            let loss    = cross_entropy(logits, targets)
+
+            // Backward pass — returns gradients for each parameter.
+            let grads   = tpt.backward(loss, [w1, b1, w2, b2])
+            let g_w1    = tpt.grad(grads, 0)
+            let g_b1    = tpt.grad(grads, 1)
+            let g_w2    = tpt.grad(grads, 2)
+            let g_b2    = tpt.grad(grads, 3)
+
+            // Gradient clipping.
+            let g_w1    = tpt.clip_grad_norm(g_w1, 1.0)
+            let g_b1    = tpt.clip_grad_norm(g_b1, 1.0)
+            let g_w2    = tpt.clip_grad_norm(g_w2, 1.0)
+            let g_b2    = tpt.clip_grad_norm(g_b2, 1.0)
+
+            // AdamW updates.
+            let w1 = adamw_step(w1, g_w1, m_w1, v_w1, step, lr, beta1, beta2, eps, wd)
+            let b1 = adamw_step(b1, g_b1, m_b1, v_b1, step, lr, beta1, beta2, eps, wd)
+            let w2 = adamw_step(w2, g_w2, m_w2, v_w2, step, lr, beta1, beta2, eps, wd)
+            let b2 = adamw_step(b2, g_b2, m_b2, v_b2, step, lr, beta1, beta2, eps, wd)
+
+            let train_loss = train_loss + loss
+            let n_batches  = n_batches + 1
+        }
+
+        // --- Validation ---
+        let val_loss = 0.0
+        let val_acc  = 0.0
+        let n_val    = 0
+        for batch in val_data {
+            let x       = tpt.batch_x(batch)
+            let targets = tpt.batch_y(batch)
+            let logits  = mlp_forward(x, w1, b1, w2, b2)
+            let val_loss = val_loss + cross_entropy(logits, targets)
+            let val_acc  = val_acc  + accuracy(logits, targets)
+            let n_val    = n_val + 1
+        }
+
+        tpt.sync()
+
+        // --- Checkpoint every 5 epochs ---
+        let do_ckpt = epoch % 5 == 4
+        if do_ckpt {
+            let model = tpt.pack_model([w1, b1, w2, b2])
+            let path  = tpt.path_join(ckpt_dir, tpt.format("epoch_{}.tptc", epoch))
+            tpt.save_checkpoint(model, path)
+        }
+    }
+
+    return true
+}

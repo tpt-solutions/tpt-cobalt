@@ -1,0 +1,21 @@
+[package]
+name = "tpt-gpu-uir-adapter"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0 WITH LLVM-exception"
+description = "TPTIR -> TPT-UIR ingestion adapter for tpt-gpu (Phase 3 of tpt-uir)"
+
+[dependencies]
+tpt-gpu-compiler = { path = "../tpt-gpu-compiler" }
+# Cross-repo deps on the sibling `tpt-uir` workspace, pinned to an exact rev so
+# builds are reproducible and Cargo.lock stays stable. Do NOT switch these back
+# to `path = "../../../tpt-uir/..."`: that only resolves when tpt-uir happens to
+# be checked out next to tpt-gpu, which is never true on CI runners and breaks
+# the whole workspace (see CHANGELOG). To develop against a local tpt-uir
+# checkout, use a gitignored `.cargo/config.toml` path override instead — see
+# AGENTS.md, "Cross-repo dependency on tpt-uir".
+# These become plain version deps once tpt-uir is published to crates.io.
+tpt-uir-core = { git = "https://github.com/tpt-solutions/tpt-uir", rev = "4c80f97a4e0b7ddb77f62680f5fb92cb03887ab5", features = ["serde"] }
+tpt-uir-dialects = { git = "https://github.com/tpt-solutions/tpt-uir", rev = "4c80f97a4e0b7ddb77f62680f5fb92cb03887ab5" }
+tpt-uir-serde = { git = "https://github.com/tpt-solutions/tpt-uir", rev = "4c80f97a4e0b7ddb77f62680f5fb92cb03887ab5", features = ["std"] }
+thiserror = { version = "2" }

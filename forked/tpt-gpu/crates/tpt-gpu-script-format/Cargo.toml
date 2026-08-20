@@ -1,0 +1,16 @@
+[package]
+name = "tpt-gpu-script-format"
+version = "0.1.0"
+edition = "2021"
+authors = ["TPT Solutions"]
+description = "TPT Script formatter and linter"
+license = "MIT OR Apache-2.0 WITH LLVM-exception"
+repository = "https://github.com/tpt-solutions/tpt-gpu"
+documentation = "https://docs.rs/tpt-gpu-script-format"
+readme = "README.md"
+keywords = ["gpu", "compiler", "ml", "ai", "tptscript"]
+categories = ["compilers", "development-tools"]
+
+[dependencies]
+tpt-gpu-script-core = { path = "../tpt-gpu-script-core", version = "0.1.0" }
+serde = { version = "1", features = ["derive"] }

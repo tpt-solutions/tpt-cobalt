@@ -1,0 +1,44 @@
+[package]
+name = "tpt-eng-props"
+version = "0.1.1"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+description = "Umbrella: re-exports water + air + fuels fluid properties."
+readme = "README.md"
+keywords = ["engineering", "thermodynamics", "properties", "fluids", "steam"]
+categories = ["science", "algorithms", "no-std"]
+repository = "https://github.com/tpt-solutions/tpt-engineering"
+homepage = "https://github.com/tpt-solutions/tpt-engineering"
+
+[dependencies]
+# tpt-math-units is kept as an explicit version with `default-features = false`:
+# `workspace = true` + `default-features = false` is rejected by cargo (it cannot
+# override an inherited default-features), which would break this no_std-capable
+# crate. See Phase 7.2 / todo.md 7.2.
+tpt-math-units = { version = "0.1.0", default-features = false }
+tpt-eng-props-water = { path = "../tpt-eng-props-water", version = "0.1.0" }
+tpt-eng-props-air = { path = "../tpt-eng-props-air", version = "0.1.0" }
+tpt-eng-props-fuels = { path = "../tpt-eng-props-fuels", version = "0.1.0" }
+tpt-eng-props-mixture = { path = "../tpt-eng-props-mixture", version = "0.1.0" }
+
+[features]
+default = ["std"]
+std = [
+    "tpt-eng-props-water/std",
+    "tpt-eng-props-air/std",
+    "tpt-eng-props-fuels/std",
+    "tpt-eng-props-mixture/std",
+    "tpt-math-units/std",
+]
+alloc = [
+    "tpt-eng-props-water/alloc",
+    "tpt-eng-props-air/alloc",
+    "tpt-eng-props-fuels/alloc",
+    "tpt-eng-props-mixture/alloc",
+    "tpt-math-units/alloc",
+]
+
+[lints]
+rust = { unsafe_op_in_unsafe_fn = "warn", unsafe_code = "forbid" }
+clippy = { all = "warn", missing_errors_doc = "warn", missing_panics_doc = "warn" }

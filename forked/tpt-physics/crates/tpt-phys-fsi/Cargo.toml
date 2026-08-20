@@ -1,0 +1,23 @@
+[package]
+name = "tpt-phys-fsi"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.84"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+description = "Fluid-structure interaction coupling (partitioned approach, mesh mapping) for tpt-physics."
+repository = "https://github.com/tpt-solutions/tpt-physics"
+homepage = "https://github.com/tpt-solutions/tpt-physics"
+readme = "README.md"
+keywords = ["fsi", "fluid-structure", "coupling", "multiphysics", "simulation"]
+categories = ["science", "mathematics", "simulation"]
+
+[dependencies]
+tpt-fem-mesh = { path = "../../../tpt-fem/crates/tpt-fem-mesh" }
+tpt-phys-core = { path = "../tpt-phys-core" }
+tpt-phys-cfd = { path = "../tpt-phys-cfd" }
+tracing = { version = "0.1" }
+
+[lints]
+rust = { unsafe_op_in_unsafe_fn = "warn", unsafe_code = "forbid" }
+clippy = { all = "warn" }

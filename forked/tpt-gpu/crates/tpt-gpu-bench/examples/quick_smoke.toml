@@ -1,0 +1,28 @@
+# Minimal smoke test — completes in a few seconds, suitable for CI.
+[target]
+gpu = "sim"
+label = "quick-smoke"
+
+[run]
+warmup = 1
+iterations = 3
+
+[[workload]]
+kind = "gemm"
+M = [256, 512]
+N = [256]
+K = [256]
+
+[[workload]]
+kind = "attention"
+seq_lens = [128, 256]
+d_k = [64]
+heads = [8]
+
+[[workload]]
+kind = "conv2d"
+batch = [1]
+channels_in = [16]
+channels_out = [16]
+spatial = [32]
+kernel_size = [3]

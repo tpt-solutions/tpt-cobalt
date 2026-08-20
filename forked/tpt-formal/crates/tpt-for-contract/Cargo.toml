@@ -1,0 +1,28 @@
+[package]
+name = "tpt-for-contract"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+description = "Design-by-contract: preconditions, postconditions, invariants, loop invariants."
+
+readme = "README.md"
+keywords = ["contract", "design-by-contract", "precondition", "postcondition", "invariant"]
+categories = ["rust-patterns", "no-std"]
+
+[dependencies]
+
+[features]
+default = ["std"]
+std = []
+alloc = []
+
+[lints]
+rust = { unsafe_op_in_unsafe_fn = "warn" }
+clippy = { all = "warn" }
+
+[[example]]
+name = "contract_basic"
+path = "examples/bank_account.rs"
+

@@ -1,0 +1,204 @@
+##==============================================================================
+## tpt_power.upf — TPT GPU Power Intent (IEEE 1801 UPF)
+##==============================================================================
+## TPT GPU — Tensor Processing Technology
+## License: Apache License 2.0 (with Express Patent Grant)
+##
+## Power domains:
+##   PD_TOP     — Always-on: CSR, warp scheduler, memory controller   (VDD_CORE = 0.7 V)
+##   PD_SM_N    — Per-SM compute (gated when SM idle)                 (VDD_CORE = 0.7 V)
+##   PD_TENSOR  — Tensor units (deeper gating, separate retention)    (VDD_CORE = 0.7 V)
+##   PD_L2      — L2 cache (gated during power-save mode)             (VDD_CORE = 0.7 V)
+##   PD_IO      — MMIO / PCIe interface                               (VDD_IO   = 1.8 V)
+##
+## Voltage domains (supply nets):
+##   VDD_CORE  0.70 V nominal (0.63 V min / 0.77 V max)
+##   VDD_IO    1.80 V nominal (PCIe MMIO pads)
+##   VSS       Ground
+##==============================================================================
+
+##------------------------------------------------------------------------------
+## 1. Supply nets and ports
+##------------------------------------------------------------------------------
+create_supply_net  VDD_CORE
+create_supply_net  VDD_CORE_SM    ;# switched copy for SM domains
+create_supply_net  VDD_CORE_L2    ;# switched copy for L2 domain
+create_supply_net  VDD_IO
+create_supply_net  VSS
+
+create_supply_port VDD_CORE_PORT  -direction in
+create_supply_port VDD_IO_PORT    -direction in
+create_supply_port VSS_PORT       -direction in
+
+connect_supply_net VDD_CORE -ports VDD_CORE_PORT
+connect_supply_net VDD_IO   -ports VDD_IO_PORT
+connect_supply_net VSS      -ports VSS_PORT
+
+##------------------------------------------------------------------------------
+## 2. Power domains
+##------------------------------------------------------------------------------
+
+# Always-on top domain (CSR, warp scheduler, mem controller)
+create_power_domain PD_TOP -include_scope
+set_domain_supply_net PD_TOP \
+    -primary_power_net  VDD_CORE \
+    -primary_ground_net VSS
+
+# Per-SM compute domain (replicated NUM_SM times via generate scope)
+create_power_domain PD_SM \
+    -elements {gen_sm[*]/core_inst gen_sm[*]/icache_inst gen_sm[*]/dcache_inst}
+set_domain_supply_net PD_SM \
+    -primary_power_net  VDD_CORE_SM \
+    -primary_ground_net VSS
+
+# Tensor unit sub-domain (deeper power gating, separate retention)
+create_power_domain PD_TENSOR \
+    -elements {gen_sm[*]/core_inst/alu_inst}
+set_domain_supply_net PD_TENSOR \
+    -primary_power_net  VDD_CORE_SM \
+    -primary_ground_net VSS
+
+# L2 cache domain
+create_power_domain PD_L2 \
+    -elements {l2_inst}
+set_domain_supply_net PD_L2 \
+    -primary_power_net  VDD_CORE_L2 \
+    -primary_ground_net VSS
+
+# I/O domain (MMIO + PCIe pads)
+create_power_domain PD_IO \
+    -elements {csr_inst}
+set_domain_supply_net PD_IO \
+    -primary_power_net  VDD_IO \
+    -primary_ground_net VSS
+
+##------------------------------------------------------------------------------
+## 3. Power switches (header switches — PMOS)
+##------------------------------------------------------------------------------
+
+# SM power switch (one per SM cluster)
+create_power_switch SW_SM \
+    -domain           PD_SM \
+    -output_supply_port {vout VDD_CORE_SM} \
+    -input_supply_port  {vin  VDD_CORE}   \
+    -control_port       {en   sm_pwr_en}  \
+    -on_sequence  {{en  1'b1}} \
+    -off_sequence {{en  1'b0}}
+
+# L2 power switch
+create_power_switch SW_L2 \
+    -domain           PD_L2 \
+    -output_supply_port {vout VDD_CORE_L2} \
+    -input_supply_port  {vin  VDD_CORE}    \
+    -control_port       {en   l2_pwr_en}   \
+    -on_sequence  {{en  1'b1}} \
+    -off_sequence {{en  1'b0}}
+
+##------------------------------------------------------------------------------
+## 4. Isolation strategies
+##    Signals crossing from a switched domain to an always-on domain
+##    must be isolated when the source domain is powered off.
+##------------------------------------------------------------------------------
+
+# SM → PD_TOP isolation: clamp to 0 (safe default for all control signals)
+set_isolation SM_ISO \
+    -domain           PD_SM \
+    -isolation_power_net  VDD_CORE \
+    -isolation_ground_net VSS \
+    -clamp_value      0 \
+    -applies_to       outputs \
+    -location         parent
+
+set_isolation_control SM_ISO \
+    -domain PD_SM \
+    -isolation_signal sm_iso_en \
+    -isolation_sense  high
+
+# L2 → PD_TOP isolation
+set_isolation L2_ISO \
+    -domain           PD_L2 \
+    -isolation_power_net  VDD_CORE \
+    -isolation_ground_net VSS \
+    -clamp_value      0 \
+    -applies_to       outputs \
+    -location         parent
+
+set_isolation_control L2_ISO \
+    -domain PD_L2 \
+    -isolation_signal l2_iso_en \
+    -isolation_sense  high
+
+##------------------------------------------------------------------------------
+## 5. State retention
+##    Retain warp scheduler context and CSR registers across SM power-down.
+##    L2 SRAM uses data retention (tied to a separate low-Vdd rail in silicon).
+##------------------------------------------------------------------------------
+
+# Retain warp scheduler registers (round-robin pointer, warp PC table)
+set_retention SM_RET \
+    -domain          PD_SM \
+    -retention_power_net  VDD_CORE \
+    -retention_ground_net VSS \
+    -save_signal   {sm_ret_save  high} \
+    -restore_signal {sm_ret_restore high}
+
+# L2 SRAM data retention via SRAM compiler option (annotated here)
+set_retention L2_RET \
+    -domain          PD_L2 \
+    -retention_power_net  VDD_CORE \
+    -retention_ground_net VSS \
+    -save_signal    {l2_ret_save    high} \
+    -restore_signal {l2_ret_restore high}
+
+##------------------------------------------------------------------------------
+## 6. Level shifters
+##    Required for VDD_IO (1.8 V) ↔ VDD_CORE (0.7 V) crossings.
+##------------------------------------------------------------------------------
+
+set_level_shifter LS_IO_TO_CORE \
+    -domain        PD_IO \
+    -applies_to    outputs \
+    -threshold     0.5 \
+    -rule          low_to_high \
+    -location      parent
+
+set_level_shifter LS_CORE_TO_IO \
+    -domain        PD_TOP \
+    -applies_to    inputs \
+    -threshold     0.5 \
+    -rule          high_to_low \
+    -location      self
+
+##------------------------------------------------------------------------------
+## 7. Power state table (PST)
+##    Defines legal combinations of domain power states.
+##------------------------------------------------------------------------------
+
+add_pst_state ACTIVE    \
+    -pst tpt_pst         \
+    -state {PD_TOP ON PD_SM ON PD_TENSOR ON PD_L2 ON PD_IO ON}
+
+add_pst_state SM_IDLE   \
+    -pst tpt_pst         \
+    -state {PD_TOP ON PD_SM OFF PD_TENSOR OFF PD_L2 ON PD_IO ON}
+
+add_pst_state DEEP_IDLE \
+    -pst tpt_pst         \
+    -state {PD_TOP ON PD_SM OFF PD_TENSOR OFF PD_L2 OFF PD_IO ON}
+
+add_pst_state STANDBY   \
+    -pst tpt_pst         \
+    -state {PD_TOP ON PD_SM OFF PD_TENSOR OFF PD_L2 OFF PD_IO ON}
+
+create_pst tpt_pst -supplies {VDD_CORE VDD_CORE_SM VDD_CORE_L2 VDD_IO VSS}
+
+##------------------------------------------------------------------------------
+## 8. Always-on cells annotation
+##    Cells in PD_TOP that gate the power switch control signals must be AO.
+##------------------------------------------------------------------------------
+set_always_on_cell PD_TOP \
+    -cells [list sched_inst csr_inst memctrl_inst]
+
+##------------------------------------------------------------------------------
+## End of UPF
+##------------------------------------------------------------------------------

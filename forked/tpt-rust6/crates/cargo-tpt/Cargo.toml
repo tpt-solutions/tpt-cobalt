@@ -1,0 +1,17 @@
+[package]
+name = "cargo-tpt"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.81"
+license = "MIT OR Apache-2.0"
+description = "Cargo subcommand for the TPT stack: `cargo tpt new`, `cargo tpt doctor`, `cargo tpt features`"
+
+# The binary name must match the package name so that cargo can dispatch
+# `cargo tpt ...` to it once it is on PATH.
+[[bin]]
+name = "cargo-tpt"
+path = "src/main.rs"
+
+# Deliberately dependency-free: the CLI uses `std` only, so `cargo install
+# cargo-tpt` stays fast and cannot drift out of sync with the stack it reports on.
+[dependencies]

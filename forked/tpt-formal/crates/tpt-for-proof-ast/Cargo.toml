@@ -1,0 +1,23 @@
+[package]
+name = "tpt-for-proof-ast"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+description = "Proof AST: representation of terms, formulas, and proof trees."
+
+readme = "README.md"
+keywords = ["ast", "proof", "logic", "formal-verification", "term"]
+categories = ["science", "mathematics", "data-structures"]
+
+[dependencies]
+
+[lints]
+rust = { unsafe_op_in_unsafe_fn = "warn" }
+clippy = { all = "warn" }
+
+[[example]]
+name = "proof_ast_basic"
+path = "examples/even_halvable_proof.rs"
+

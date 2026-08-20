@@ -1,0 +1,15 @@
+[package]
+name = "out-gpu-runtime-c"
+version = "0.1.0"
+edition = "2021"
+authors = ["TPT Solutions"]
+description = "TPT Runtime - C ABI (stable C API over tpt-gpu-runtime)"
+license = "MIT OR Apache-2.0 WITH LLVM-exception"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "staticlib"]
+name = "tptr_c"
+
+[dependencies]
+tpt-gpu-runtime = { path = "../tpt-gpu-runtime" }

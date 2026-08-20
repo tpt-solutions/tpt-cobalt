@@ -1,0 +1,294 @@
+// tpt/data.tpts — TPT Script Standard Library: Data Utilities
+//
+// Tensor-level data manipulation and preprocessing utilities for
+// building training pipelines.  All functions are CPU-side (no GPU
+// requirement) unless otherwise noted.
+//
+// Usage: import tpt.data
+
+import tpt
+
+// ---------------------------------------------------------------------------
+// Encoding / decoding
+// ---------------------------------------------------------------------------
+
+@doc("One-hot encode integer indices into float vectors.")
+@input("indices:     Tensor[i64, *]", description="Class index per sample: [batch]")
+@input("num_classes: i64",            description="Total number of classes")
+@output("Tensor[f32, *, *]", description="One-hot matrix: [batch, num_classes]")
+@requires_gpu(false)
+@differentiable(false)
+@complexity("O(batch * num_classes)")
+fn one_hot(indices: Tensor[i64, *], num_classes: i64) -> Tensor[f32, *, *] {
+    let out = tpt.one_hot(indices, num_classes=num_classes)
+    return out
+}
+
+@doc("Decode one-hot rows back to class indices.")
+@input("onehot: Tensor[f32, *, *]", description="One-hot matrix: [batch, num_classes]")
+@output("Tensor[i64, *]", description="Class indices: [batch]")
+@requires_gpu(false)
+@differentiable(false)
+@complexity("O(batch * num_classes)")
+fn from_one_hot(onehot: Tensor[f32, *, *]) -> Tensor[i64, *] {
+    let indices = tpt.argmax(onehot, dim=-1)
+    return indices
+}
+
+// ---------------------------------------------------------------------------
+// Normalisation / standardisation
+// ---------------------------------------------------------------------------
+
+@doc("Z-score normalise a tensor using provided mean and std: (x - mean) / (std + eps).")
+@input("x:    Tensor[f32, *, *]", description="Input tensor")
+@input("mean: Tensor[f32, *]",    description="Per-feature mean: [features]")
+@input("std:  Tensor[f32, *]",    description="Per-feature std: [features]")
+@input("eps:  f32",               description="Numerical stability (default 1e-7)")
+@output("Tensor[f32, *, *]", description="Normalised tensor")
+@requires_gpu(false)
+@differentiable(true)
+@complexity("O(n)")
+fn normalize(x: Tensor[f32, *, *], mean: Tensor[f32, *], std: Tensor[f32, *], eps: f32) -> Tensor[f32, *, *] {
+    let out = tpt.div(tpt.sub(x, mean), tpt.add_scalar(std, eps))
+    return out
+}
+
+@doc("Auto-standardise: compute per-column mean and std, then apply Z-score normalisation.")
+@input("x:   Tensor[f32, *, *]", description="Input dataset: [n_samples, n_features]")
+@input("eps: f32",               description="Numerical stability (default 1e-7)")
+@output("(Tensor[f32, *, *], Tensor[f32, *], Tensor[f32, *])", description="(normalised_x, mean, std)")
+@requires_gpu(false)
+@differentiable(false)
+@complexity("O(n_samples * n_features)")
+fn standardize(x: Tensor[f32, *, *], eps: f32) -> (Tensor[f32, *, *], Tensor[f32, *], Tensor[f32, *]) {
+    let mean    = tpt.mean(x, dim=0)
+    let std     = tpt.std(x, dim=0)
+    let x_norm  = normalize(x, mean, std, eps=eps)
+    return (x_norm, mean, std)
+}
+
+@doc("Min-max normalise to [0, 1]: (x - min) / (max - min + eps).")
+@input("x:   Tensor[f32, *, *]", description="Input tensor")
+@input("eps: f32",               description="Numerical stability (default 1e-7)")
+@output("Tensor[f32, *, *]", description="Normalised tensor in [0, 1]")
+@requires_gpu(false)
+@differentiable(true)
+@complexity("O(n)")
+fn minmax_normalize(x: Tensor[f32, *, *], eps: f32) -> Tensor[f32, *, *] {
+    let x_min = tpt.min(x)
+    let x_max = tpt.max(x)
+    let out   = tpt.div(tpt.sub(x, x_min), tpt.add_scalar(tpt.sub(x_max, x_min), eps))
+    return out
+}
+
+// ---------------------------------------------------------------------------
+// Shuffling and splitting
+// ---------------------------------------------------------------------------
+
+@doc("Randomly shuffle rows of a tensor (along the batch dimension).")
+@input("x:    Tensor[f32, *, *]", description="Input dataset: [n_samples, ...]")
+@input("seed: i64",               description="Random seed for reproducibility")
+@output("Tensor[f32, *, *]", description="Shuffled dataset, same shape as x")
+@requires_gpu(false)
+@differentiable(false)
+@complexity("O(n_samples)")
+fn shuffle(x: Tensor[f32, *, *], seed: i64) -> Tensor[f32, *, *] {
+    tpt.seed(seed)
+    let n       = tpt.shape(x)[0]
+    let idx     = tpt.argsort(tpt.random([n]))
+    let out     = tpt.index_select(x, dim=0, index=idx)
+    return out
+}
+
+@doc("Split a dataset tensor into training and validation subsets.")
+@input("x:        Tensor[f32, *, *]", description="Full dataset: [n_samples, features]")
+@input("val_frac: f32",               description="Fraction of samples to hold out for validation (e.g. 0.2)")
+@input("seed:     i64",               description="Shuffle seed (use 0 to skip shuffle)")
+@output("(Tensor[f32, *, *], Tensor[f32, *, *])", description="Tuple (train_set, val_set)")
+@requires_gpu(false)
+@differentiable(false)
+@complexity("O(n_samples)")
+fn train_val_split(x: Tensor[f32, *, *], val_frac: f32, seed: i64) -> (Tensor[f32, *, *], Tensor[f32, *, *]) {
+    let n       = tpt.shape(x)[0]
+    let xs      = shuffle(x, seed=seed)
+    let n_val   = tpt.cast(tpt.cast(n, dtype=f32) * val_frac, dtype=i64)
+    let n_train = n - n_val
+    let train   = tpt.slice(xs, dim=0, start=0,       stop=n_train)
+    let val     = tpt.slice(xs, dim=0, start=n_train, stop=n)
+    return (train, val)
+}
+
+@doc("K-fold cross-validation split: return the k-th fold as validation, rest as training.")
+@input("x:       Tensor[f32, *, *]", description="Full dataset: [n_samples, features]")
+@input("k:       i64",               description="Total number of folds")
+@input("fold:    i64",               description="Which fold to use as validation (0-indexed)")
+@input("seed:    i64",               description="Shuffle seed")
+@output("(Tensor[f32, *, *], Tensor[f32, *, *])", description="Tuple (train_set, val_set)")
+@requires_gpu(false)
+@differentiable(false)
+@complexity("O(n_samples)")
+fn kfold_split(x: Tensor[f32, *, *], k: i64, fold: i64, seed: i64) -> (Tensor[f32, *, *], Tensor[f32, *, *]) {
+    let n        = tpt.shape(x)[0]
+    let xs       = shuffle(x, seed=seed)
+    let fold_sz  = n / k
+    let val_start = fold * fold_sz
+    let val_stop  = val_start + fold_sz
+    let val       = tpt.slice(xs, dim=0, start=val_start,  stop=val_stop)
+    let part1     = tpt.slice(xs, dim=0, start=0,          stop=val_start)
+    let part2     = tpt.slice(xs, dim=0, start=val_stop,   stop=n)
+    let train     = tpt.concat([part1, part2], dim=0)
+    return (train, val)
+}
+
+// ---------------------------------------------------------------------------
+// Batching
+// ---------------------------------------------------------------------------
+
+@doc("Split a dataset into a list of mini-batches of size batch_size (last batch may be smaller).")
+@input("x:          Tensor[f32, *, *]", description="Dataset: [n_samples, features]")
+@input("batch_size: i64",               description="Number of samples per batch")
+@output("[Tensor[f32, *, *], ...]", description="List of batch tensors")
+@requires_gpu(false)
+@differentiable(false)
+@complexity("O(n_samples)")
+fn make_batches(x: Tensor[f32, *, *], batch_size: i64) -> [Tensor[f32, *, *], ...] {
+    let batches = tpt.split(x, size=batch_size, dim=0)
+    return batches
+}
+
+@doc("Collate a list of sample tensors into a single batched tensor by stacking along dim 0.")
+@input("samples: [Tensor[f32, *], ...]", description="List of individual sample tensors (all same shape)")
+@output("Tensor[f32, *, *]", description="Batched tensor: [n_samples, ...]")
+@requires_gpu(false)
+@differentiable(false)
+@complexity("O(n_samples)")
+fn collate(samples: [Tensor[f32, *], ...]) -> Tensor[f32, *, *] {
+    let batch = tpt.stack(samples, dim=0)
+    return batch
+}
+
+// ---------------------------------------------------------------------------
+// Padding utilities
+// ---------------------------------------------------------------------------
+
+@doc("Pad a batch of sequences to the same length (post-padding with a fill value).")
+@input("sequences:  [Tensor[f32, *], ...]", description="List of 1-D sequence tensors of varying length")
+@input("fill_value: f32",                   description="Pad token value (default 0.0)")
+@output("Tensor[f32, *, *]", description="Padded batch: [batch, max_len]")
+@requires_gpu(false)
+@differentiable(false)
+@complexity("O(batch * max_len)")
+fn pad_sequences(sequences: [Tensor[f32, *], ...], fill_value: f32) -> Tensor[f32, *, *] {
+    let max_len  = tpt.max(tpt.from_list(sequences))
+    let padded   = tpt.zeros([tpt.shape(sequences)[0], max_len])
+    let i        = 0
+    for seq in sequences {
+        let l    = tpt.shape(seq)[0]
+        let row  = tpt.concat([seq, tpt.full([max_len - l], fill_value)], dim=0)
+        let padded = tpt.index_select(padded, dim=0, index=tpt.arange(0, i + 1))
+    }
+    return padded
+}
+
+// ---------------------------------------------------------------------------
+// Image preprocessing
+// ---------------------------------------------------------------------------
+
+@doc("Normalise an image tensor using per-channel mean and std (ImageNet convention).")
+@input("x:    Tensor[f32, *, *, *, *]", description="Image batch: [N, C, H, W] in [0, 1]")
+@input("mean: Tensor[f32, *]",          description="Per-channel mean: [C]")
+@input("std:  Tensor[f32, *]",          description="Per-channel std: [C]")
+@output("Tensor[f32, *, *, *, *]", description="Normalised image batch")
+@requires_gpu(false)
+@differentiable(true)
+@complexity("O(N * C * H * W)")
+fn normalize_image(x: Tensor[f32, *, *, *, *], mean: Tensor[f32, *], std: Tensor[f32, *]) -> Tensor[f32, *, *, *, *] {
+    let mean_r = tpt.reshape(mean, [1, tpt.shape(mean)[0], 1, 1])
+    let std_r  = tpt.reshape(std,  [1, tpt.shape(std)[0],  1, 1])
+    let out    = tpt.div(tpt.sub(x, mean_r), std_r)
+    return out
+}
+
+@doc("Random horizontal flip: flip each image in a batch with probability p.")
+@input("x:    Tensor[f32, *, *, *, *]", description="Image batch: [N, C, H, W]")
+@input("p:    f32",                     description="Flip probability (default 0.5)")
+@input("seed: i64",                     description="Random seed")
+@output("Tensor[f32, *, *, *, *]", description="Augmented batch")
+@requires_gpu(false)
+@differentiable(false)
+@complexity("O(N * C * H * W)")
+fn random_hflip(x: Tensor[f32, *, *, *, *], p: f32, seed: i64) -> Tensor[f32, *, *, *, *] {
+    tpt.seed(seed)
+    let n       = tpt.shape(x)[0]
+    let mask    = tpt.lt(tpt.random([n]), p)
+    let flipped = tpt.flip(x, dims=[3])
+    let out     = tpt.where(tpt.reshape(mask, [n, 1, 1, 1]), flipped, x)
+    return out
+}
+
+// ---------------------------------------------------------------------------
+// Sampling
+// ---------------------------------------------------------------------------
+
+@doc("Sample n rows uniformly at random from a dataset tensor (without replacement).")
+@input("x:    Tensor[f32, *, *]", description="Dataset: [n_samples, features]")
+@input("n:    i64",               description="Number of rows to sample")
+@input("seed: i64",               description="Random seed")
+@output("Tensor[f32, *, *]", description="Sampled subset: [n, features]")
+@requires_gpu(false)
+@differentiable(false)
+@complexity("O(n_samples)")
+fn sample_rows(x: Tensor[f32, *, *], n: i64, seed: i64) -> Tensor[f32, *, *] {
+    tpt.seed(seed)
+    let total = tpt.shape(x)[0]
+    let order = tpt.argsort(tpt.random([total]))
+    let idx   = tpt.slice(order, dim=0, start=0, stop=n)
+    let out   = tpt.index_select(x, dim=0, index=idx)
+    return out
+}
+
+@doc("Multinomial sampling: draw n indices from a probability distribution.")
+@input("probs: Tensor[f32, *]", description="Probability vector (will be normalised if not already sum-to-1)")
+@input("n:     i64",            description="Number of samples to draw")
+@input("seed:  i64",            description="Random seed")
+@output("Tensor[i64, *]", description="Sampled indices: [n]")
+@requires_gpu(false)
+@differentiable(false)
+@complexity("O(n_classes + n)")
+fn multinomial(probs: Tensor[f32, *], n: i64, seed: i64) -> Tensor[i64, *] {
+    tpt.seed(seed)
+    let cum    = tpt.cumsum(probs, dim=0)
+    let u      = tpt.random([n])
+    let idx    = tpt.argmin(tpt.abs(tpt.sub(tpt.reshape(cum, [1, tpt.shape(cum)[0]]),
+                                            tpt.reshape(u,   [n, 1]))), dim=1)
+    return idx
+}
+
+// ---------------------------------------------------------------------------
+// Statistics helpers
+// ---------------------------------------------------------------------------
+
+@doc("Compute per-feature mean and std over the batch dimension.")
+@input("x: Tensor[f32, *, *]", description="Dataset: [n_samples, features]")
+@output("(Tensor[f32, *], Tensor[f32, *])", description="Tuple (mean, std) each of shape [features]")
+@requires_gpu(false)
+@differentiable(false)
+@complexity("O(n_samples * features)")
+fn dataset_stats(x: Tensor[f32, *, *]) -> (Tensor[f32, *], Tensor[f32, *]) {
+    let mean = tpt.mean(x, dim=0)
+    let std  = tpt.std(x, dim=0)
+    return (mean, std)
+}
+
+@doc("Compute class frequencies from a label tensor.")
+@input("labels:      Tensor[i64, *]", description="Class label per sample: [n_samples]")
+@input("num_classes: i64",            description="Total number of classes")
+@output("Tensor[i64, *]", description="Count per class: [num_classes]")
+@requires_gpu(false)
+@differentiable(false)
+@complexity("O(n_samples)")
+fn class_counts(labels: Tensor[i64, *], num_classes: i64) -> Tensor[i64, *] {
+    let onehot = tpt.one_hot(labels, num_classes=num_classes)
+    let counts = tpt.cast(tpt.sum(onehot, dim=0), dtype=i64)
+    return counts
+}

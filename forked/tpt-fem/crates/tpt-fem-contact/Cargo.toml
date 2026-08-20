@@ -1,0 +1,26 @@
+[package]
+name = "tpt-fem-contact"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+description = "Surface-to-surface contact mechanics (penalty + augmented Lagrangian) for tpt-fem."
+repository = "https://github.com/tpt-solutions/tpt-fem"
+homepage = "https://github.com/tpt-solutions/tpt-fem"
+readme = "README.md"
+keywords = ["finite-element", "fem", "contact", "penalty", "augmented-lagrangian"]
+categories = ["science", "mathematics", "simulation"]
+
+[dependencies]
+tpt-fem-assembly = { path = "../tpt-fem-assembly", version = "0.1.0" }
+tpt-fem-sparse = { path = "../tpt-fem-sparse", version = "0.1.0" }
+tpt-fem-mesh = { path = "../tpt-fem-mesh", version = "0.1.0" }
+tpt-fem-dofmap = { path = "../tpt-fem-dofmap", version = "0.1.0" }
+
+[features]
+default = []
+
+[lints]
+rust = { unsafe_op_in_unsafe_fn = "warn" }
+clippy = { all = { level = "warn", priority = -1 }, excessive_precision = "allow", needless_range_loop = "allow", too_many_arguments = "allow" }

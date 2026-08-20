@@ -1,0 +1,30 @@
+[package]
+name = "tpt-math-symbolic"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.84"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+description = "Permissive-license symbolic math (CAS)."
+readme = "README.md"
+repository = "https://github.com/tpt-solutions/tpt-math"
+homepage = "https://github.com/tpt-solutions/tpt-math"
+documentation = "https://docs.rs/tpt-math-symbolic"
+keywords = ["symbolic", "cas", "algebra", "expression", "symbolic-math"]
+categories = ["mathematics", "science", "algorithms"]
+
+[dependencies]
+num-traits = "0.2"
+tpt-math-exact = { path = "../tpt-math-exact", version = "0.1.0", optional = true }
+
+[features]
+default = ["std"]
+std = []
+alloc = []
+exact = ["dep:tpt-math-exact"]
+
+[dev-dependencies]
+
+[lints]
+rust = { unsafe_op_in_unsafe_fn = "warn", unsafe_code = "forbid" }
+clippy = { all = "warn" }

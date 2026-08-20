@@ -1,0 +1,27 @@
+[package]
+name = "tpt-math-graph"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.84"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+description = "Graph mathematics for the tpt-math substrate. Thin wrap over petgraph (dual Apache-2.0 OR MIT, no_std + alloc) for adjacency / topological sort / shortest paths, plus an in-house max-flow solver."
+readme = "README.md"
+repository = "https://github.com/tpt-solutions/tpt-math"
+homepage = "https://github.com/tpt-solutions/tpt-math"
+documentation = "https://docs.rs/tpt-math-graph"
+keywords = ["graph", "toposort", "dijkstra", "astar", "max-flow"]
+categories = ["mathematics", "algorithms", "data-structures", "no-std"]
+
+[dependencies]
+petgraph = { version = "0.8", default-features = false, features = ["graphmap", "stable_graph"] }
+tpt-math-numeric = { path = "../tpt-math-numeric", version = "0.1.0", default-features = false }
+
+[features]
+default = ["std"]
+std = ["petgraph/std", "tpt-math-numeric/std", "alloc"]
+alloc = ["tpt-math-numeric/alloc"]
+
+[lints]
+rust = { unsafe_op_in_unsafe_fn = "warn", unsafe_code = "forbid" }
+clippy = { all = "warn" }

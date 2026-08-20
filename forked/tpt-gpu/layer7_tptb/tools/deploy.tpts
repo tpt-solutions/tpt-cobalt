@@ -1,0 +1,196 @@
+// tpt deploy — Model packaging and deployment tool.
+//
+// Written in TPT Script and compiled with the tptb compiler.
+// Invoked via `tpt deploy <file> --target <target> [options]`.
+//
+// Deployment workflow:
+//   1. validate_model  — check the model is type-correct and hardware-compatible
+//   2. optimize        — apply target-specific optimisations (quantisation, fusion)
+//   3. export          — serialise to a deployment bundle
+//   4. verify          — run a quick correctness check on the bundle
+//
+// Supported targets (passed as [u8] tag strings):
+//   "cloud"  — full precision, maximise throughput
+//   "edge"   — quantised (int8/fp16), minimise memory footprint
+//   "mobile" — quantised (int8), kernel fusion, fixed batch=1
+
+import tpt
+
+// ---------------------------------------------------------------------------
+// validate_model
+// ---------------------------------------------------------------------------
+
+@doc("Validate that a model is ready for deployment: hardware caps check plus forward pass.")
+@input("model: Model", description="Trained model to validate")
+@input("sample_input: Tensor[f32, *, *]", description="Sample input for shape verification")
+@output("bool", description="true if the model passes all checks")
+@requires_gpu(false)
+fn validate_model(model: Model, sample_input: Tensor[f32, *, *]) -> bool {
+    let output = model.forward(sample_input)
+    let ok     = tpt.is_valid(output)
+    return ok
+}
+
+// ---------------------------------------------------------------------------
+// quantize_fp16
+// ---------------------------------------------------------------------------
+
+@doc("Cast all model weights to fp16, halving VRAM with negligible accuracy loss.")
+@input("model: Model", description="Source model in fp32")
+@output("Model", description="fp16 model")
+@requires_gpu(true)
+@min_vram_gb(4)
+fn quantize_fp16(model: Model) -> Model {
+    let fp16_model = tpt.cast_model(model, dtype=f16)
+    return fp16_model
+}
+
+// ---------------------------------------------------------------------------
+// quantize_int8
+// ---------------------------------------------------------------------------
+
+@doc("Post-training int8 quantisation using a calibration dataset for per-channel scales.")
+@input("model: Model", description="Source model in fp32 or fp16")
+@input("calibration_data: DataLoader", description="Representative input batches for calibration")
+@input("n_batches: i64", description="Number of calibration batches to use")
+@output("Model", description="int8-quantised model")
+@requires_gpu(false)
+@complexity("O(n_batches * model_params)")
+fn quantize_int8(model: Model, calibration_data: DataLoader, n_batches: i64) -> Model {
+    let stats = tpt.activation_stats_init()
+
+    let batch_idx = 0
+    for batch in calibration_data {
+        if batch_idx >= n_batches {
+            break
+        }
+        let out = model.forward(batch)
+        tpt.activation_stats_update(stats, out)
+        let batch_idx = batch_idx + 1
+    }
+
+    let int8_model = tpt.quantize(model, stats, bits=8)
+    return int8_model
+}
+
+// ---------------------------------------------------------------------------
+// fuse_kernels
+// ---------------------------------------------------------------------------
+
+@doc("Apply operator fusion: collapse elementwise chains and Flash Attention patterns.")
+@input("model: Model", description="Model to optimise")
+@output("Model", description="Model with fused kernel graph")
+@requires_gpu(false)
+fn fuse_kernels(model: Model) -> Model {
+    let fused = tpt.fusion_pass(model)
+    return fused
+}
+
+// ---------------------------------------------------------------------------
+// export_checkpoint
+// ---------------------------------------------------------------------------
+
+@doc("Serialise a model to a binary checkpoint file on the host filesystem.")
+@input("model: Model", description="Model to serialise")
+@input("path: [u8]", description="Destination file path (e.g. '/models/my_model.tptc')")
+@output("bool", description="true on success")
+@requires_gpu(false)
+fn export_checkpoint(model: Model, path: [u8]) -> bool {
+    let ckpt = tpt.save_checkpoint(model, path)
+    return ckpt
+}
+
+// ---------------------------------------------------------------------------
+// load_checkpoint
+// ---------------------------------------------------------------------------
+
+@doc("Load a model from a previously exported checkpoint file.")
+@input("path: [u8]", description="Path to the checkpoint file")
+@output("Checkpoint", description="Loaded model checkpoint")
+@requires_gpu(false)
+fn load_checkpoint(path: [u8]) -> Checkpoint {
+    let ckpt = tpt.load_checkpoint(path)
+    return ckpt
+}
+
+// ---------------------------------------------------------------------------
+// prepare_cloud
+// ---------------------------------------------------------------------------
+
+@doc("Prepare a model for cloud deployment: apply kernel fusion, keep fp32 precision.")
+@input("model: Model", description="Source model")
+@input("output_path: [u8]", description="Destination checkpoint path")
+@output("bool", description="true on success")
+@deploy(target="cloud", optimize=true)
+@requires_gpu(true)
+@supports_distributed(true)
+fn prepare_cloud(model: Model, output_path: [u8]) -> bool {
+    let fused = fuse_kernels(model)
+    let ok    = export_checkpoint(fused, output_path)
+    return ok
+}
+
+// ---------------------------------------------------------------------------
+// prepare_edge
+// ---------------------------------------------------------------------------
+
+@doc("Prepare a model for edge: quantise to fp16, fuse kernels, and export.")
+@input("model: Model", description="Source model (fp32)")
+@input("output_path: [u8]", description="Destination checkpoint path")
+@output("bool", description="true on success")
+@deploy(target="edge", optimize=true)
+@requires_gpu(false)
+@min_vram_gb(4)
+fn prepare_edge(model: Model, output_path: [u8]) -> bool {
+    let fp16_model  = quantize_fp16(model)
+    let fused_model = fuse_kernels(fp16_model)
+    let ok          = export_checkpoint(fused_model, output_path)
+    return ok
+}
+
+// ---------------------------------------------------------------------------
+// prepare_mobile
+// ---------------------------------------------------------------------------
+
+@doc("Prepare a model for mobile: int8 quantisation, kernel fusion, fixed batch=1.")
+@input("model: Model", description="Source model (fp32)")
+@input("calibration_data: DataLoader", description="Calibration dataset for int8 quantisation")
+@input("output_path: [u8]", description="Destination checkpoint path")
+@output("bool", description="true on success")
+@deploy(target="mobile", optimize=true)
+@requires_gpu(false)
+@max_batch_size(1)
+fn prepare_mobile(model: Model, calibration_data: DataLoader,
+                  output_path: [u8]) -> bool {
+    let int8_model  = quantize_int8(model, calibration_data, 50)
+    let fused_model = fuse_kernels(int8_model)
+    let ok          = export_checkpoint(fused_model, output_path)
+    return ok
+}
+
+// ---------------------------------------------------------------------------
+// verify_deployment
+// ---------------------------------------------------------------------------
+
+@doc("Load a checkpoint, run one forward pass, and confirm the output has no NaN or Inf.")
+@input("checkpoint_path: [u8]", description="Path to the checkpoint to verify")
+@input("input_shape: [i64]", description="Shape of the test input, e.g. [1, 3, 224, 224]")
+@output("bool", description="true if the output passes sanity checks")
+@requires_gpu(false)
+fn verify_deployment(checkpoint_path: [u8], input_shape: [i64]) -> bool {
+    let ckpt   = load_checkpoint(checkpoint_path)
+    let model  = tpt.restore_model(ckpt)
+    let sample = tpt.randn(input_shape, dtype=f32)
+    let out    = model.forward(sample)
+
+    let has_nan = tpt.any(tpt.is_nan(out))
+    let has_inf = tpt.any(tpt.is_inf(out))
+
+    if has_nan {
+        return false
+    }
+    if has_inf {
+        return false
+    }
+    return true
+}

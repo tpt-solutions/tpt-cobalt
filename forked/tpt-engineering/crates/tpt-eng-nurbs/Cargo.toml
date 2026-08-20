@@ -1,0 +1,22 @@
+[package]
+name = "tpt-eng-nurbs"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/tpt-solutions/tpt-engineering"
+authors = ["TPT Solutions"]
+rust-version = "1.85"
+description = "Spline and NURBS modeling: B-splines, NURBS curves/surfaces, knot vectors, evaluation, derivatives, tessellation"
+readme = "README.md"
+keywords = ["nurbs", "bspline", "spline", "cad", "geometry"]
+categories = ["science", "mathematics", "graphics"]
+
+[dependencies]
+glam = { version = "0.33", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
+tpt-eng-geometry = { path = "../tpt-eng-geometry", version = "0.1.0" }
+tpt-eng-mesh = { path = "../tpt-eng-mesh", version = "0.1.0" }
+
+[lints]
+rust = { unsafe_op_in_unsafe_fn = "warn", unsafe_code = "forbid" }
+clippy = { all = "warn", missing_errors_doc = "warn", missing_panics_doc = "warn" }

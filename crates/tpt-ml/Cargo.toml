@@ -1,0 +1,10 @@
+[package]
+name = "tpt-ml"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+tpt-tensor = { workspace = true }
+tpt-autograd = { workspace = true }
+

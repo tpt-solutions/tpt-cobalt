@@ -1,0 +1,16 @@
+[package]
+name = "tpt-gpu-doctor"
+version = "0.1.0"
+edition = "2021"
+authors = ["TPT Solutions"]
+description = "TPT-GPU environment health check (toolchain, fmt/clippy, vendor SDKs, Python)"
+license = "MIT OR Apache-2.0 WITH LLVM-exception"
+repository = "https://github.com/tpt-solutions/tpt-gpu"
+documentation = "https://docs.rs/tpt-gpu-doctor"
+readme = "README.md"
+keywords = ["gpu", "diagnostics", "cli", "toolchain", "onboarding"]
+categories = ["command-line-utilities", "development-tools"]
+
+[[bin]]
+name = "tpt-gpu-doctor"
+path = "src/main.rs"

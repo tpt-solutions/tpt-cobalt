@@ -1,0 +1,382 @@
+// distributed/pipeline_parallel.tpts — Pipeline parallelism across 4 GPUs.
+//
+// Pipeline parallelism partitions the model by layer (stage) rather than
+// sharding individual weight tensors.  This example implements a 4-stage
+// pipeline with micro-batch interleaving (GPipe schedule), which keeps all
+// GPUs busy by processing multiple micro-batches simultaneously.
+//
+// Layout:
+//   GPU 0 — embedding layer + transformer layers 0–1   (stage 0)
+//   GPU 1 — transformer layers 2–3                      (stage 1)
+//   GPU 2 — transformer layers 4–5                      (stage 2)
+//   GPU 3 — transformer layers 6–7 + LM head            (stage 3)
+//
+// GPipe schedule (4 micro-batches, 4 stages):
+//   Time:   0   1   2   3   4   5   6
+//   GPU 0: [0] [1] [2] [3]  .   .   .
+//   GPU 1:  .  [0] [1] [2] [3]  .   .
+//   GPU 2:  .   .  [0] [1] [2] [3]  .
+//   GPU 3:  .   .   .  [0] [1] [2] [3]
+//
+// The bubble (idle time before the pipeline is full / after it drains)
+// is (n_stages - 1) / n_microbatches = (4 - 1) / 4 = 75 % → 43 % → ...
+// Using 8 micro-batches reduces it to (4-1)/8 = 37.5 %.
+
+import tpt
+import tpt.dist
+
+// ---------------------------------------------------------------------------
+// Hyper-parameters
+// ---------------------------------------------------------------------------
+
+let N_STAGES      = 4
+let N_LAYERS      = 8            // total; 2 layers per stage
+let N_MICROBATCHES = 4
+let D_MODEL       = 1024
+let D_FF          = 4096
+let N_HEADS       = 16
+let SEQ_LEN       = 1024
+let VOCAB_SIZE    = 50257        // GPT-2 vocabulary
+
+// ---------------------------------------------------------------------------
+// Stage 0 — Embedding + layers 0–1
+// ---------------------------------------------------------------------------
+
+@doc("Stage 0: token embedding lookup + first two transformer layers.")
+@input("token_ids:  Tensor[i64, *, *]", description="Token indices: [micro_batch, seq]")
+@input("embed_w:    Tensor[f32, *, *]", description="Token embedding table: [vocab, d_model]")
+@input("pos_w:      Tensor[f32, *, *]", description="Position embedding: [seq, d_model]")
+@input("layer0_a:   Model",             description="Attention weights for layer 0")
+@input("layer0_f:   Model",             description="FFN weights for layer 0")
+@input("layer1_a:   Model",             description="Attention weights for layer 1")
+@input("layer1_f:   Model",             description="FFN weights for layer 1")
+@input("mask:       Tensor[f32, *, *]", description="Causal mask")
+@output("Tensor[f32, *, *, *]", description="Activations after layer 1: [micro_batch, seq, d_model]")
+@requires_gpu(true)
+@distributed_strategy("pipeline_parallel")
+@distributed_devices(4)
+@complexity("O(micro_batch * seq² * d_model)")
+fn stage0_forward(token_ids: Tensor[i64, *, *],
+                   embed_w:   Tensor[f32, *, *],
+                   pos_w:     Tensor[f32, *, *],
+                   layer0_a:  Model,
+                   layer0_f:  Model,
+                   layer1_a:  Model,
+                   layer1_f:  Model,
+                   mask:      Tensor[f32, *, *]) -> Tensor[f32, *, *, *] {
+    // Embedding lookup + positional bias.
+    let tok_emb = tpt.embed(token_ids, embed_w)
+    let pos_idx = tpt.arange(SEQ_LEN)
+    let pos_emb = tpt.embed(pos_idx, pos_w)
+    let h = tpt.add(tok_emb, pos_emb)
+
+    // Two transformer layers.
+    let h = transformer_layer(h, layer0_a, layer0_f, mask, N_HEADS)
+    let h = transformer_layer(h, layer1_a, layer1_f, mask, N_HEADS)
+    return h
+}
+
+// ---------------------------------------------------------------------------
+// Stage 1–2 — Middle layers (identical structure)
+// ---------------------------------------------------------------------------
+
+@doc("Middle pipeline stage: two transformer layers applied to activations from the prior stage.")
+@input("h:        Tensor[f32, *, *, *]", description="Activations in: [micro_batch, seq, d_model]")
+@input("layer_a0: Model",                description="Attention weights for first layer")
+@input("layer_f0: Model",                description="FFN weights for first layer")
+@input("layer_a1: Model",                description="Attention weights for second layer")
+@input("layer_f1: Model",                description="FFN weights for second layer")
+@input("mask:     Tensor[f32, *, *]",    description="Causal mask")
+@output("Tensor[f32, *, *, *]", description="Activations out: [micro_batch, seq, d_model]")
+@requires_gpu(true)
+@distributed_strategy("pipeline_parallel")
+@distributed_devices(4)
+fn middle_stage_forward(h:        Tensor[f32, *, *, *],
+                         layer_a0: Model,
+                         layer_f0: Model,
+                         layer_a1: Model,
+                         layer_f1: Model,
+                         mask:     Tensor[f32, *, *]) -> Tensor[f32, *, *, *] {
+    let h = transformer_layer(h, layer_a0, layer_f0, mask, N_HEADS)
+    let h = transformer_layer(h, layer_a1, layer_f1, mask, N_HEADS)
+    return h
+}
+
+// ---------------------------------------------------------------------------
+// Stage 3 — Final layers + LM head
+// ---------------------------------------------------------------------------
+
+@doc("Stage 3 (last): two transformer layers, final layer-norm, and LM head projection.")
+@input("h:        Tensor[f32, *, *, *]", description="Activations in: [micro_batch, seq, d_model]")
+@input("layer_a0: Model",                description="Attention weights for layer 6")
+@input("layer_f0: Model",                description="FFN weights for layer 6")
+@input("layer_a1: Model",                description="Attention weights for layer 7")
+@input("layer_f1: Model",                description="FFN weights for layer 7")
+@input("ln_g:     Tensor[f32, *]",       description="Final layer-norm scale: [d_model]")
+@input("ln_b:     Tensor[f32, *]",       description="Final layer-norm bias: [d_model]")
+@input("lm_head:  Tensor[f32, *, *]",   description="LM head weight: [vocab, d_model]")
+@input("mask:     Tensor[f32, *, *]",    description="Causal mask")
+@output("Tensor[f32, *, *, *]", description="Logits: [micro_batch, seq, vocab_size]")
+@requires_gpu(true)
+@distributed_strategy("pipeline_parallel")
+@distributed_devices(4)
+fn stage3_forward(h:        Tensor[f32, *, *, *],
+                   layer_a0: Model,
+                   layer_f0: Model,
+                   layer_a1: Model,
+                   layer_f1: Model,
+                   ln_g:     Tensor[f32, *],
+                   ln_b:     Tensor[f32, *],
+                   lm_head:  Tensor[f32, *, *],
+                   mask:     Tensor[f32, *, *]) -> Tensor[f32, *, *, *] {
+    let h = transformer_layer(h, layer_a0, layer_f0, mask, N_HEADS)
+    let h = transformer_layer(h, layer_a1, layer_f1, mask, N_HEADS)
+
+    // Final layer norm.
+    let batch   = tpt.shape(h, dim=0)
+    let seq     = tpt.shape(h, dim=1)
+    let d       = tpt.shape(h, dim=2)
+    let eps     = 1e-5
+    let h_flat  = tpt.reshape(h, [batch * seq, d])
+    let mean    = tpt.mean(h_flat, dim=-1, keepdim=true)
+    let diff    = tpt.sub(h_flat, mean)
+    let var     = tpt.mean(tpt.mul(diff, diff), dim=-1, keepdim=true)
+    let ln_out  = tpt.broadcast_add(
+                      tpt.broadcast_mul(
+                          tpt.div(diff, tpt.sqrt(tpt.add_scalar(var, eps))),
+                          ln_g),
+                      ln_b)
+
+    // LM head projection.
+    let logits  = tpt.matmul_2d(ln_out, tpt.transpose(lm_head))
+    let logits  = tpt.reshape(logits, [batch, seq, VOCAB_SIZE])
+    return logits
+}
+
+// ---------------------------------------------------------------------------
+// GPipe schedule — orchestrated from the host
+// ---------------------------------------------------------------------------
+
+@doc("Run one forward + backward GPipe step over N_MICROBATCHES micro-batches.")
+@input("x:          Tensor[f32, *, *, *]",  description="Full global batch: [global_batch, seq, d_model]")
+@input("targets:    Tensor[i64, *, *]",     description="Global targets: [global_batch, seq]")
+@input("stage_params: [Model]",             description="Model weights, partitioned per stage")
+@input("step:       i64",                   description="Global training step")
+@input("lr:         f32",                   description="Current learning rate")
+@output("f32", description="Mean cross-entropy loss for this step")
+@distributed_strategy("pipeline_parallel")
+@distributed_devices(4)
+@requires_gpu(false)
+fn gpipe_step(x:            Tensor[f32, *, *, *],
+               targets:      Tensor[i64, *, *],
+               stage_params: [Model],
+               step:         i64,
+               lr:           f32) -> f32 {
+    let mask = tpt.causal_mask([SEQ_LEN, SEQ_LEN], dtype=f32)
+
+    // Split into N_MICROBATCHES micro-batches.
+    let mb_x = tpt.split(x,       n=N_MICROBATCHES, dim=0)
+    let mb_y = tpt.split(targets, n=N_MICROBATCHES, dim=0)
+
+    // Forward pass — each stage sends activations to the next stage via P2P.
+    let mb_losses  = tpt.zeros([N_MICROBATCHES], dtype=f32)
+    let mb_grads   = []
+
+    for mb_idx in 0..N_MICROBATCHES {
+        let x_mb = tpt.index(mb_x, mb_idx)
+        let y_mb = tpt.index(mb_y, mb_idx)
+
+        // Stage 0 (GPU 0).
+        let h0 = tpt.dist.send_recv(stage0_forward(
+            tpt.cast(x_mb, dtype=i64),
+            tpt.model_param(stage_params, 0, "embed_w"),
+            tpt.model_param(stage_params, 0, "pos_w"),
+            tpt.model_param(stage_params, 0, "layer0_attn"),
+            tpt.model_param(stage_params, 0, "layer0_ffn"),
+            tpt.model_param(stage_params, 0, "layer1_attn"),
+            tpt.model_param(stage_params, 0, "layer1_ffn"),
+            mask), src=0, dst=1)
+
+        // Stage 1 (GPU 1).
+        let h1 = tpt.dist.send_recv(middle_stage_forward(
+            h0,
+            tpt.model_param(stage_params, 1, "layer2_attn"),
+            tpt.model_param(stage_params, 1, "layer2_ffn"),
+            tpt.model_param(stage_params, 1, "layer3_attn"),
+            tpt.model_param(stage_params, 1, "layer3_ffn"),
+            mask), src=1, dst=2)
+
+        // Stage 2 (GPU 2).
+        let h2 = tpt.dist.send_recv(middle_stage_forward(
+            h1,
+            tpt.model_param(stage_params, 2, "layer4_attn"),
+            tpt.model_param(stage_params, 2, "layer4_ffn"),
+            tpt.model_param(stage_params, 2, "layer5_attn"),
+            tpt.model_param(stage_params, 2, "layer5_ffn"),
+            mask), src=2, dst=3)
+
+        // Stage 3 (GPU 3) — produces logits.
+        let logits = stage3_forward(
+            h2,
+            tpt.model_param(stage_params, 3, "layer6_attn"),
+            tpt.model_param(stage_params, 3, "layer6_ffn"),
+            tpt.model_param(stage_params, 3, "layer7_attn"),
+            tpt.model_param(stage_params, 3, "layer7_ffn"),
+            tpt.model_param(stage_params, 3, "ln_g"),
+            tpt.model_param(stage_params, 3, "ln_b"),
+            tpt.model_param(stage_params, 3, "lm_head"),
+            mask)
+
+        // Loss on GPU 3.
+        let loss = tpt.cross_entropy_2d(logits, y_mb)
+        let mb_losses = tpt.index_set(mb_losses, mb_idx, loss)
+
+        // Stash activations for backward pass (GPipe re-materialises on backward).
+        let mb_grads = tpt.list_append(mb_grads, tpt.backward(loss,
+                           tpt.dist.stage_params_flat(stage_params)))
+    }
+
+    // Gradient accumulation across micro-batches.
+    let accum_grads = tpt.dist.accumulate_grads(mb_grads, n=N_MICROBATCHES)
+
+    // Each stage updates its own parameters.
+    tpt.dist.pipeline_adamw(stage_params, accum_grads, step,
+                             lr, beta1=0.9, beta2=0.999, eps=1e-8, wd=0.1)
+
+    tpt.dist.barrier()
+    return tpt.mean(mb_losses)
+}
+
+// ---------------------------------------------------------------------------
+// Helper: one transformer layer (shared across all stages)
+// ---------------------------------------------------------------------------
+
+@doc("One pre-norm transformer layer.")
+@input("x:      Tensor[f32, *, *, *]", description="[batch, seq, d_model]")
+@input("attn_w: Model",                description="Attention weight bundle")
+@input("ffn_w:  Model",                description="FFN weight bundle")
+@input("mask:   Tensor[f32, *, *]",    description="Causal mask")
+@input("n_h:    i64",                  description="Number of heads")
+@output("Tensor[f32, *, *, *]", description="Same shape as x")
+@requires_gpu(true)
+fn transformer_layer(x:      Tensor[f32, *, *, *],
+                      attn_w: Model,
+                      ffn_w:  Model,
+                      mask:   Tensor[f32, *, *],
+                      n_h:    i64) -> Tensor[f32, *, *, *] {
+    let d     = tpt.shape(x, dim=2)
+    let hd    = d / n_h
+    let batch = tpt.shape(x, dim=0)
+    let seq   = tpt.shape(x, dim=1)
+    let eps   = 1e-5
+
+    // Pre-norm.
+    let x_2d  = tpt.reshape(x, [batch * seq, d])
+    let mean  = tpt.mean(x_2d, dim=-1, keepdim=true)
+    let diff  = tpt.sub(x_2d, mean)
+    let var   = tpt.mean(tpt.mul(diff, diff), dim=-1, keepdim=true)
+    let ln1   = tpt.broadcast_add(
+                    tpt.broadcast_mul(
+                        tpt.div(diff, tpt.sqrt(tpt.add_scalar(var, eps))),
+                        tpt.model_param(attn_w, 0, "ln1_g")),
+                    tpt.model_param(attn_w, 0, "ln1_b"))
+    let ln1_3 = tpt.reshape(ln1, [batch, seq, d])
+
+    // MHA.
+    let wq = tpt.model_param(attn_w, 0, "wq")
+    let wk = tpt.model_param(attn_w, 0, "wk")
+    let wv = tpt.model_param(attn_w, 0, "wv")
+    let wo = tpt.model_param(attn_w, 0, "wo")
+    let q  = tpt.reshape(tpt.matmul_2d(tpt.reshape(ln1_3, [batch*seq, d]), wq),
+                          [batch, seq, n_h, hd])
+    let k  = tpt.reshape(tpt.matmul_2d(tpt.reshape(ln1_3, [batch*seq, d]), wk),
+                          [batch, seq, n_h, hd])
+    let v  = tpt.reshape(tpt.matmul_2d(tpt.reshape(ln1_3, [batch*seq, d]), wv),
+                          [batch, seq, n_h, hd])
+    let q  = tpt.transpose(q, dim0=1, dim1=2)
+    let k  = tpt.transpose(k, dim0=1, dim1=2)
+    let v  = tpt.transpose(v, dim0=1, dim1=2)
+    let sc = 1.0 / tpt.sqrt(tpt.cast(hd, dtype=f32))
+    let at = tpt.broadcast_add(tpt.mul_scalar(tpt.matmul(q, tpt.transpose_last2(k)), sc), mask)
+    let ct = tpt.matmul(tpt.softmax(at, dim=-1), v)
+    let ct = tpt.reshape(tpt.transpose(ct, dim0=1, dim1=2), [batch, seq, d])
+    let ao = tpt.reshape(tpt.matmul_2d(tpt.reshape(ct, [batch*seq, d]), wo), [batch, seq, d])
+    let x  = tpt.add(x, ao)
+
+    // Pre-norm 2 + FFN.
+    let x_2d  = tpt.reshape(x, [batch * seq, d])
+    let mean2 = tpt.mean(x_2d, dim=-1, keepdim=true)
+    let diff2 = tpt.sub(x_2d, mean2)
+    let var2  = tpt.mean(tpt.mul(diff2, diff2), dim=-1, keepdim=true)
+    let ln2   = tpt.broadcast_add(
+                    tpt.broadcast_mul(
+                        tpt.div(diff2, tpt.sqrt(tpt.add_scalar(var2, eps))),
+                        tpt.model_param(ffn_w, 0, "ln2_g")),
+                    tpt.model_param(ffn_w, 0, "ln2_b"))
+    let w1  = tpt.model_param(ffn_w, 0, "w1")
+    let b1  = tpt.model_param(ffn_w, 0, "b1")
+    let w2  = tpt.model_param(ffn_w, 0, "w2")
+    let b2  = tpt.model_param(ffn_w, 0, "b2")
+    let h1  = tpt.broadcast_add(tpt.matmul_2d(ln2, tpt.transpose(w1)), b1)
+    let c1  = 0.7978845608
+    let c2  = 0.044715
+    let hg  = tpt.mul(h1, tpt.mul_scalar(
+                  tpt.add_scalar(tpt.tanh(
+                      tpt.mul_scalar(tpt.add(h1, tpt.mul_scalar(
+                          tpt.mul(tpt.mul(h1, h1), h1), c2)), c1)), 1.0), 0.5))
+    let ff  = tpt.broadcast_add(tpt.matmul_2d(hg, tpt.transpose(w2)), b2)
+    let out = tpt.add(x, tpt.reshape(ff, [batch, seq, d]))
+    return out
+}
+
+// ---------------------------------------------------------------------------
+// Host entry point
+// ---------------------------------------------------------------------------
+
+@doc("Initialise pipeline-parallel context and run the training loop.")
+@input("train_data:  DataLoader", description="Training token batches")
+@input("n_steps:     i64",        description="Total training steps")
+@input("lr:          f32",        description="Learning rate")
+@input("ckpt_dir:    [u8]",       description="Checkpoint output directory")
+@output("bool", description="true on success")
+@distributed_strategy("pipeline_parallel")
+@distributed_devices(4)
+@requires_gpu(false)
+fn run_pipeline_training(train_data: DataLoader,
+                          n_steps:    i64,
+                          lr:         f32,
+                          ckpt_dir:   [u8]) -> bool {
+    tpt.dist.init(strategy="pipeline_parallel", world_size=N_STAGES)
+
+    let stage_params = tpt.dist.init_pipeline_stages(
+        n_layers=N_LAYERS, n_stages=N_STAGES,
+        d_model=D_MODEL, d_ff=D_FF, n_heads=N_HEADS,
+        vocab_size=VOCAB_SIZE, seq_len=SEQ_LEN)
+
+    let step = 0
+    for batch in train_data {
+        let step = step + 1
+        if step > n_steps { break }
+
+        let x       = tpt.batch_x(batch)
+        let targets = tpt.batch_y(batch)
+
+        let loss = gpipe_step(x, targets, stage_params, step, lr)
+
+        let do_log = step % 50 == 0
+        if do_log {
+            tpt.print(tpt.format("step={} loss={:.4f} lr={:.6f}", step, loss, lr))
+        }
+
+        let do_ckpt = step % 1000 == 0
+        if do_ckpt {
+            let full_model = tpt.dist.gather_pipeline_model(stage_params, root_rank=0)
+            let path = tpt.path_join(ckpt_dir, tpt.format("step_{}.tptc", step))
+            tpt.save_checkpoint(full_model, path)
+            tpt.dist.barrier()
+        }
+    }
+
+    tpt.dist.shutdown()
+    return true
+}

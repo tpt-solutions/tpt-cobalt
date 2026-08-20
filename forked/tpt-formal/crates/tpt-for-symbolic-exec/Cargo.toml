@@ -1,0 +1,24 @@
+[package]
+name = "tpt-for-symbolic-exec"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+description = "Whole-program symbolic execution."
+
+readme = "README.md"
+keywords = ["symbolic-execution", "verification", "smt", "static-analysis", "testing"]
+categories = ["science", "development-tools::testing", "algorithms"]
+
+[dependencies]
+tpt-for-smt-lite = { path = "../tpt-for-smt-lite", version = "0.1.0" }
+
+[lints]
+rust = { unsafe_op_in_unsafe_fn = "warn" }
+clippy = { all = "warn" }
+
+[[example]]
+name = "symbolic_exec_basic"
+path = "examples/div_by_zero_paths.rs"
+

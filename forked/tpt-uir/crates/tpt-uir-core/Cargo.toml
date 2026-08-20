@@ -1,0 +1,20 @@
+[package]
+name = "tpt-uir-core"
+version = "0.1.0"
+edition = "2021"
+description = "Core data structures for the TPT Unified Intermediate Representation (no_std)"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+repository = "https://github.com/tpt-solutions/tpt-uir"
+homepage = "https://github.com/tpt-solutions/tpt-uir"
+documentation = "https://docs.rs/tpt-uir-core"
+keywords = ["uir", "ir", "compiler", "ssa", "no-std"]
+categories = ["compilers", "data-structures", "no-std"]
+readme = "README.md"
+
+[dependencies]
+serde = { version = "1.0", optional = true, default-features = false, features = ["derive", "alloc"] }
+
+[features]
+default = []
+serde = ["dep:serde"]

@@ -1,0 +1,34 @@
+[package]
+name = "tpt-math-prob"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.84"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+description = "Umbrella: re-exports tpt-math-prob-* behind features."
+readme = "README.md"
+repository = "https://github.com/tpt-solutions/tpt-math"
+homepage = "https://github.com/tpt-solutions/tpt-math"
+documentation = "https://docs.rs/tpt-math-prob"
+keywords = ["probability", "statistics", "umbrella", "distributions", "sampling"]
+categories = ["mathematics", "science", "algorithms"]
+
+[dependencies]
+tpt-math-prob-monte-carlo = { path = "../tpt-math-prob-monte-carlo", version = "0.1.0", optional = true }
+tpt-math-prob-bayes = { path = "../tpt-math-prob-bayes", version = "0.1.0", optional = true }
+tpt-math-prob-sampler = { path = "../tpt-math-prob-sampler", version = "0.1.0", optional = true }
+tpt-math-prob-markov = { path = "../tpt-math-prob-markov", version = "0.1.1", optional = true }
+tpt-math-prob-dist = { path = "../tpt-math-prob-dist", version = "0.1.0", optional = true }
+
+[features]
+default = ["tpt-math-prob-monte-carlo", "tpt-math-prob-bayes", "tpt-math-prob-sampler", "tpt-math-prob-markov", "tpt-math-prob-dist"]
+tpt-math-prob-monte-carlo = ["dep:tpt-math-prob-monte-carlo"]
+tpt-math-prob-bayes = ["dep:tpt-math-prob-bayes"]
+tpt-math-prob-sampler = ["dep:tpt-math-prob-sampler"]
+tpt-math-prob-markov = ["dep:tpt-math-prob-markov"]
+tpt-math-prob-dist = ["dep:tpt-math-prob-dist"]
+
+
+[lints]
+rust = { unsafe_op_in_unsafe_fn = "warn", unsafe_code = "forbid" }
+clippy = { all = "warn" }

@@ -1,0 +1,22 @@
+[package]
+name = "tpt-eng-standards"
+version = "0.1.1"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+repository = "https://github.com/tpt-solutions/tpt-engineering"
+homepage = "https://github.com/tpt-solutions/tpt-engineering"
+keywords = ["engineering", "standards", "structural", "load", "design"]
+categories = ["science", "data-structures"]
+description = "Engineering standards modeling as structured, parameterized data: load cases, combinations, factors, and limit-state logic (no copyrighted standard text)."
+readme = "README.md"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = { workspace = true }
+tpt-eng-safety = { path = "../tpt-eng-safety", version = "0.1.0" }
+
+[lints]
+rust = { unsafe_op_in_unsafe_fn = "warn", unsafe_code = "forbid" }
+clippy = { all = "warn", missing_errors_doc = "warn", missing_panics_doc = "warn" }

@@ -1,0 +1,402 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/*",
+    "forked/tpt-crucible/crates/tpt-alloy",
+    "forked/tpt-crucible/crates/tpt-catalyst",
+    "forked/tpt-crucible/crates/tpt-crucible-uir-adapter",
+    "forked/tpt-engineering/crates/tpt-eng-biomech",
+    "forked/tpt-engineering/crates/tpt-eng-building-sys",
+    "forked/tpt-engineering/crates/tpt-eng-cad",
+    "forked/tpt-engineering/crates/tpt-eng-cli",
+    "forked/tpt-engineering/crates/tpt-eng-controls",
+    "forked/tpt-engineering/crates/tpt-eng-crystallography",
+    "forked/tpt-engineering/crates/tpt-eng-electrical",
+    "forked/tpt-engineering/crates/tpt-eng-examples",
+    "forked/tpt-engineering/crates/tpt-eng-gdt",
+    "forked/tpt-engineering/crates/tpt-eng-geo-asset",
+    "forked/tpt-engineering/crates/tpt-eng-geo-topology",
+    "forked/tpt-engineering/crates/tpt-eng-geometry",
+    "forked/tpt-engineering/crates/tpt-eng-geotech",
+    "forked/tpt-engineering/crates/tpt-eng-heat-transfer",
+    "forked/tpt-engineering/crates/tpt-eng-io",
+    "forked/tpt-engineering/crates/tpt-eng-materials",
+    "forked/tpt-engineering/crates/tpt-eng-mesh",
+    "forked/tpt-engineering/crates/tpt-eng-network-matrix",
+    "forked/tpt-engineering/crates/tpt-eng-nurbs",
+    "forked/tpt-engineering/crates/tpt-eng-pcb",
+    "forked/tpt-engineering/crates/tpt-eng-plot",
+    "forked/tpt-engineering/crates/tpt-eng-power-components",
+    "forked/tpt-engineering/crates/tpt-eng-props",
+    "forked/tpt-engineering/crates/tpt-eng-props-air",
+    "forked/tpt-engineering/crates/tpt-eng-props-fuels",
+    "forked/tpt-engineering/crates/tpt-eng-props-mixture",
+    "forked/tpt-engineering/crates/tpt-eng-props-water",
+    "forked/tpt-engineering/crates/tpt-eng-reliability",
+    "forked/tpt-engineering/crates/tpt-eng-renewables",
+    "forked/tpt-engineering/crates/tpt-eng-report",
+    "forked/tpt-engineering/crates/tpt-eng-safety",
+    "forked/tpt-engineering/crates/tpt-eng-schedule",
+    "forked/tpt-engineering/crates/tpt-eng-sections",
+    "forked/tpt-engineering/crates/tpt-eng-standards",
+    "forked/tpt-engineering/crates/tpt-eng-structural",
+    "forked/tpt-engineering/crates/tpt-eng-thermal-mgmt",
+    "forked/tpt-engineering/crates/tpt-eng-timeseries",
+    "forked/tpt-engineering/crates/tpt-eng-timeseries-align",
+    "forked/tpt-engineering/crates/tpt-eng-timeseries-core",
+    "forked/tpt-engineering/crates/tpt-eng-timeseries-gap",
+    "forked/tpt-engineering/crates/tpt-eng-tolerance",
+    "forked/tpt-engineering/crates/tpt-eng-unit-ops",
+    "forked/tpt-engineering/crates/tpt-eng-vehicle-dynamics",
+    "forked/tpt-engineering/crates/tpt-engineering",
+    "forked/tpt-fem/crates/tpt-fem",
+    "forked/tpt-fem/crates/tpt-fem-assembly",
+    "forked/tpt-fem/crates/tpt-fem-composite",
+    "forked/tpt-fem/crates/tpt-fem-contact",
+    "forked/tpt-fem/crates/tpt-fem-coupling",
+    "forked/tpt-fem/crates/tpt-fem-dofmap",
+    "forked/tpt-fem/crates/tpt-fem-dynamic",
+    "forked/tpt-fem/crates/tpt-fem-eigen",
+    "forked/tpt-fem/crates/tpt-fem-elasticity",
+    "forked/tpt-fem/crates/tpt-fem-element",
+    "forked/tpt-fem/crates/tpt-fem-fluid",
+    "forked/tpt-fem/crates/tpt-fem-hyperelastic",
+    "forked/tpt-fem/crates/tpt-fem-io-abaqus",
+    "forked/tpt-fem/crates/tpt-fem-io-exodus",
+    "forked/tpt-fem/crates/tpt-fem-io-vtk",
+    "forked/tpt-fem/crates/tpt-fem-mesh",
+    "forked/tpt-fem/crates/tpt-fem-mesh-gen",
+    "forked/tpt-fem/crates/tpt-fem-plasticity",
+    "forked/tpt-fem/crates/tpt-fem-porous",
+    "forked/tpt-fem/crates/tpt-fem-quadrature",
+    "forked/tpt-fem/crates/tpt-fem-solve",
+    "forked/tpt-fem/crates/tpt-fem-sparse",
+    "forked/tpt-fem/crates/tpt-fem-thermal",
+    "forked/tpt-formal/crates/tpt-for-abstract-interp",
+    "forked/tpt-formal/crates/tpt-for-assert-const",
+    "forked/tpt-formal/crates/tpt-for-contract",
+    "forked/tpt-formal/crates/tpt-for-det-proptest",
+    "forked/tpt-formal/crates/tpt-for-deterministic-sim",
+    "forked/tpt-formal/crates/tpt-for-model-check",
+    "forked/tpt-formal/crates/tpt-for-proof-ast",
+    "forked/tpt-formal/crates/tpt-for-redundancy",
+    "forked/tpt-formal/crates/tpt-for-refinement",
+    "forked/tpt-formal/crates/tpt-for-runtime-verify",
+    "forked/tpt-formal/crates/tpt-for-sat",
+    "forked/tpt-formal/crates/tpt-for-smt-lite",
+    "forked/tpt-formal/crates/tpt-for-symbolic-exec",
+    "forked/tpt-formal/crates/tpt-for-trace-macros",
+    "forked/tpt-formal/crates/tpt-for-typestate",
+    "forked/tpt-formal/crates/tpt-for-vcgen",
+    "forked/tpt-formal/crates/tpt-for-verified-algorithms",
+    "forked/tpt-formal/crates/tpt-for-verified-ode",
+    "forked/tpt-formal/crates/tpt-for-witness",
+    "forked/tpt-gpu/crates/out-gpu-dispatch",
+    "forked/tpt-gpu/crates/out-gpu-playground",
+    "forked/tpt-gpu/crates/out-gpu-primitives-benches",
+    "forked/tpt-gpu/crates/out-gpu-runtime-c",
+    "forked/tpt-gpu/crates/out-gpu-runtime-py",
+    "forked/tpt-gpu/crates/tpt-gpu-bench",
+    "forked/tpt-gpu/crates/tpt-gpu-compiler",
+    "forked/tpt-gpu/crates/tpt-gpu-doctor",
+    "forked/tpt-gpu/crates/tpt-gpu-driver-daemon",
+    "forked/tpt-gpu/crates/tpt-gpu-ir-spec",
+    "forked/tpt-gpu/crates/tpt-gpu-kernel-optimizer",
+    "forked/tpt-gpu/crates/tpt-gpu-kernelgen",
+    "forked/tpt-gpu/crates/tpt-gpu-model-optimizer",
+    "forked/tpt-gpu/crates/tpt-gpu-model-registry",
+    "forked/tpt-gpu/crates/tpt-gpu-primitives",
+    "forked/tpt-gpu/crates/tpt-gpu-runtime",
+    "forked/tpt-gpu/crates/tpt-gpu-script-cli",
+    "forked/tpt-gpu/crates/tpt-gpu-script-core",
+    "forked/tpt-gpu/crates/tpt-gpu-script-format",
+    "forked/tpt-gpu/crates/tpt-gpu-script-lsp",
+    "forked/tpt-gpu/crates/tpt-gpu-serve",
+    "forked/tpt-gpu/crates/tpt-gpu-shared",
+    "forked/tpt-gpu/crates/tpt-gpu-uir-adapter",
+    "forked/tpt-gpu/crates/tpt-gpu-vendor-cert",
+    "forked/tpt-math/crates/tpt-math-autodiff",
+    "forked/tpt-math/crates/tpt-math-autodiff-fwd",
+    "forked/tpt-math/crates/tpt-math-autodiff-rev",
+    "forked/tpt-math/crates/tpt-math-exact",
+    "forked/tpt-math/crates/tpt-math-geometry",
+    "forked/tpt-math/crates/tpt-math-graph",
+    "forked/tpt-math/crates/tpt-math-interpolate",
+    "forked/tpt-math/crates/tpt-math-linalg",
+    "forked/tpt-math/crates/tpt-math-linalg-complex",
+    "forked/tpt-math/crates/tpt-math-linalg-dense",
+    "forked/tpt-math/crates/tpt-math-linalg-fixed",
+    "forked/tpt-math/crates/tpt-math-linalg-sparse",
+    "forked/tpt-math/crates/tpt-math-numeric",
+    "forked/tpt-math/crates/tpt-math-optimize",
+    "forked/tpt-math/crates/tpt-math-optimize-convex",
+    "forked/tpt-math/crates/tpt-math-optimize-general",
+    "forked/tpt-math/crates/tpt-math-prob",
+    "forked/tpt-math/crates/tpt-math-prob-bayes",
+    "forked/tpt-math/crates/tpt-math-prob-core",
+    "forked/tpt-math/crates/tpt-math-prob-dist",
+    "forked/tpt-math/crates/tpt-math-prob-markov",
+    "forked/tpt-math/crates/tpt-math-prob-monte-carlo",
+    "forked/tpt-math/crates/tpt-math-prob-sampler",
+    "forked/tpt-math/crates/tpt-math-signal",
+    "forked/tpt-math/crates/tpt-math-signal-fft",
+    "forked/tpt-math/crates/tpt-math-signal-filter",
+    "forked/tpt-math/crates/tpt-math-spatial",
+    "forked/tpt-math/crates/tpt-math-stats",
+    "forked/tpt-math/crates/tpt-math-symbolic",
+    "forked/tpt-math/crates/tpt-math-units",
+    "forked/tpt-math/crates/tpt-math-units-dyn",
+    "forked/tpt-physics/crates/tpt-phys-cfd",
+    "forked/tpt-physics/crates/tpt-phys-core",
+    "forked/tpt-physics/crates/tpt-phys-dem",
+    "forked/tpt-physics/crates/tpt-phys-electro-thermal",
+    "forked/tpt-physics/crates/tpt-phys-fsi",
+    "forked/tpt-physics/crates/tpt-phys-orchestrator",
+    "forked/tpt-physics/crates/tpt-phys-thermal-struct",
+    "forked/tpt-physics/crates/tpt-physics-wasm",
+    "forked/tpt-rust6/crates/tpt-grad",
+    "forked/tpt-rust6/crates/tpt-grad-macro",
+    "forked/tpt-rust6/crates/tpt-io",
+    "forked/tpt-rust6/crates/tpt-learn",
+    "forked/tpt-rust6/crates/tpt-omni",
+    "forked/tpt-rust6/crates/tpt-script",
+    "forked/tpt-rust6/crates/tpt-stat",
+    "forked/tpt-rust6/crates/tpt-viz",
+    "forked/tpt-science/crates/tpt-sci-astro",
+    "forked/tpt-science/crates/tpt-sci-grid",
+    "forked/tpt-science/crates/tpt-sci-image",
+    "forked/tpt-science/crates/tpt-sci-ode",
+    "forked/tpt-science/crates/tpt-sci-physics-rigid",
+    "forked/tpt-science/crates/tpt-sci-ppl",
+    "forked/tpt-science/crates/tpt-sci-quantum",
+    "forked/tpt-science/crates/tpt-sci-reaction-network",
+    "forked/tpt-science/crates/tpt-sci-sim-core",
+    "forked/tpt-telos/crates/out-telos-wasm",
+    "forked/tpt-telos/crates/tpt-telos-agent",
+    "forked/tpt-telos/crates/tpt-telos-cli",
+    "forked/tpt-telos/crates/tpt-telos-codegen",
+    "forked/tpt-telos/crates/tpt-telos-ir",
+    "forked/tpt-telos/crates/tpt-telos-lsp",
+    "forked/tpt-telos/crates/tpt-telos-parser",
+    "forked/tpt-telos/crates/tpt-telos-router",
+    "forked/tpt-telos/crates/tpt-telos-sdk",
+    "forked/tpt-telos/crates/tpt-telos-uir-bridge",
+    "forked/tpt-telos/crates/tpt-telos-verifier",
+    "forked/tpt-uir/crates/tpt-uir-core",
+    "forked/tpt-uir/crates/tpt-uir-dialects",
+    "forked/tpt-uir/crates/tpt-uir-ffi",
+    "forked/tpt-uir/crates/tpt-uir-flatbuffers",
+    "forked/tpt-uir/crates/tpt-uir-serde",
+    "forked/tpt-uir/crates/tpt-uir-text",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions <contact@tpt.solutions>"]
+repository = "https://github.com/tpt-solutions/tpt-crucible"
+description = "tpt-engineering — applied engineering primitives for the TPT Solutions physical-systems verticals"
+homepage = "https://github.com/tpt-solutions/tpt-engineering"
+readme = "README.md"
+documentation = "https://docs.rs/tpt-telos"
+keywords = ["verification", "compiler", "transpiler", "smt", "formal-methods"]
+categories = ["compilers", "development-tools", "command-line-utilities"]
+
+[workspace.dependencies]
+tpt-tensor = { path = "crates/tpt-tensor" }
+tpt-autograd = { path = "crates/tpt-autograd" }
+tpt-ml = { path = "crates/tpt-ml" }
+tpt-hub = { path = "crates/tpt-hub" }
+tpt-runtime = { path = "crates/tpt-runtime" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+thiserror = "2"
+tracing = "0.1"
+pyo3 = { version = "0.24", features = ["extension-module"] }
+tracing-subscriber = "0.3"
+melior = "0.15"
+sha2 = "0.10"
+zip = "2"
+tpt-math-units = "0.1.0"
+tpt-math-numeric = "0.1.0"
+tpt-math-linalg = "0.1.0"
+tpt-math-stats = "0.1.0"
+tpt-eng-props-water = { version = "0.1.0", path = "forked/tpt-engineering/crates/tpt-eng-props-water" }
+tpt-eng-props-air = { version = "0.1.0", path = "forked/tpt-engineering/crates/tpt-eng-props-air" }
+tpt-eng-props-fuels = { version = "0.1.0", path = "forked/tpt-engineering/crates/tpt-eng-props-fuels" }
+tpt-eng-props = { version = "0.1.1", path = "forked/tpt-engineering/crates/tpt-eng-props" }
+tpt-eng-timeseries-core = { version = "0.1.0", path = "forked/tpt-engineering/crates/tpt-eng-timeseries-core" }
+tpt-eng-timeseries-align = { version = "0.1.0", path = "forked/tpt-engineering/crates/tpt-eng-timeseries-align" }
+tpt-eng-timeseries-gap = { version = "0.1.0", path = "forked/tpt-engineering/crates/tpt-eng-timeseries-gap" }
+tpt-eng-timeseries = { version = "0.1.0", path = "forked/tpt-engineering/crates/tpt-eng-timeseries" }
+tpt-eng-geo-asset = { version = "0.1.0", path = "forked/tpt-engineering/crates/tpt-eng-geo-asset" }
+tpt-eng-geo-topology = { version = "0.1.0", path = "forked/tpt-engineering/crates/tpt-eng-geo-topology" }
+tpt-eng-network-matrix = { version = "0.1.0", path = "forked/tpt-engineering/crates/tpt-eng-network-matrix" }
+tpt-eng-controls = { version = "0.1.0", path = "forked/tpt-engineering/crates/tpt-eng-controls" }
+tpt-eng-structural = { version = "0.1.0", path = "forked/tpt-engineering/crates/tpt-eng-structural" }
+tpt-eng-materials = { version = "0.1.0", path = "forked/tpt-engineering/crates/tpt-eng-materials" }
+tpt-eng-sections = { version = "0.1.0", path = "forked/tpt-engineering/crates/tpt-eng-sections" }
+tpt-eng-standards = { version = "0.1.0", path = "forked/tpt-engineering/crates/tpt-eng-standards" }
+tpt-eng-geometry = { version = "0.1.0", path = "forked/tpt-engineering/crates/tpt-eng-geometry" }
+tpt-eng-mesh = { version = "0.1.0", path = "forked/tpt-engineering/crates/tpt-eng-mesh" }
+tpt-eng-nurbs = { version = "0.1.0", path = "forked/tpt-engineering/crates/tpt-eng-nurbs" }
+tpt-eng-gdt = { version = "0.1.0", path = "forked/tpt-engineering/crates/tpt-eng-gdt" }
+tpt-eng-cad = { version = "0.1.0", path = "forked/tpt-engineering/crates/tpt-eng-cad" }
+tpt-eng-tolerance = { version = "0.1.0", path = "forked/tpt-engineering/crates/tpt-eng-tolerance" }
+tpt-eng-reliability = { version = "0.1.0", path = "forked/tpt-engineering/crates/tpt-eng-reliability" }
+tpt-eng-safety = { version = "0.1.0", path = "forked/tpt-engineering/crates/tpt-eng-safety" }
+tpt-eng-io = { version = "0.1.0", path = "forked/tpt-engineering/crates/tpt-eng-io" }
+tpt-eng-report = { version = "0.1.0", path = "forked/tpt-engineering/crates/tpt-eng-report" }
+tpt-eng-plot = { version = "0.1.0", path = "forked/tpt-engineering/crates/tpt-eng-plot" }
+tpt-eng-cli = { version = "0.1.0", path = "forked/tpt-engineering/crates/tpt-eng-cli" }
+tpt-eng-examples = { version = "0.1.0", path = "forked/tpt-engineering/crates/tpt-eng-examples" }
+csv = "1"
+glam = { version = "0.33", features = ["serde"] }
+rand = "0.10"
+rand_distr = "0.6"
+approx = "0.5"
+plotters = { version = "0.3", default-features = false, features = ["svg_backend", "bitmap_backend", "bitmap_encoder", "line_series", "point_series"] }
+clap = { version = "4.5", features = ["derive", "cargo"] }
+tpt-eng-electrical = { version = "0.1.0", path = "forked/tpt-engineering/crates/tpt-eng-electrical" }
+tpt-eng-heat-transfer = { version = "0.1.0", path = "forked/tpt-engineering/crates/tpt-eng-heat-transfer" }
+tpt-eng-props-mixture = { version = "0.1.0", path = "forked/tpt-engineering/crates/tpt-eng-props-mixture" }
+tpt-eng-pcb = { version = "0.1.0", path = "forked/tpt-engineering/crates/tpt-eng-pcb" }
+tpt-eng-thermal-mgmt = { version = "0.1.0", path = "forked/tpt-engineering/crates/tpt-eng-thermal-mgmt" }
+tpt-eng-power-components = { version = "0.1.0", path = "forked/tpt-engineering/crates/tpt-eng-power-components" }
+tpt-eng-renewables = { version = "0.1.0", path = "forked/tpt-engineering/crates/tpt-eng-renewables" }
+tpt-eng-vehicle-dynamics = { version = "0.1.0", path = "forked/tpt-engineering/crates/tpt-eng-vehicle-dynamics" }
+tpt-eng-biomech = { version = "0.1.0", path = "forked/tpt-engineering/crates/tpt-eng-biomech" }
+tpt-eng-unit-ops = { version = "0.1.0", path = "forked/tpt-engineering/crates/tpt-eng-unit-ops" }
+tpt-eng-crystallography = { version = "0.1.0", path = "forked/tpt-engineering/crates/tpt-eng-crystallography" }
+tpt-eng-geotech = { version = "0.1.0", path = "forked/tpt-engineering/crates/tpt-eng-geotech" }
+tpt-eng-building-sys = { version = "0.1.0", path = "forked/tpt-engineering/crates/tpt-eng-building-sys" }
+tpt-eng-schedule = { version = "0.1.0", path = "forked/tpt-engineering/crates/tpt-eng-schedule" }
+tpt-engineering = { version = "0.1.0", path = "forked/tpt-engineering/crates/tpt-engineering" }
+tpt-fem-quadrature = { version = "0.1.0", path = "forked/tpt-fem/crates/tpt-fem-quadrature" }
+tpt-fem-element = { version = "0.1.0", path = "forked/tpt-fem/crates/tpt-fem-element" }
+tpt-fem-mesh = { version = "0.1.0", path = "forked/tpt-fem/crates/tpt-fem-mesh" }
+tpt-fem-sparse = { version = "0.1.0", path = "forked/tpt-fem/crates/tpt-fem-sparse" }
+tpt-fem-assembly = { version = "0.1.0", path = "forked/tpt-fem/crates/tpt-fem-assembly" }
+tpt-fem-thermal = { version = "0.1.0", path = "forked/tpt-fem/crates/tpt-fem-thermal" }
+tpt-fem-io-vtk = { version = "0.1.0", path = "forked/tpt-fem/crates/tpt-fem-io-vtk" }
+tpt-fem-elasticity = { version = "0.1.0", path = "forked/tpt-fem/crates/tpt-fem-elasticity" }
+tpt-fem-solve = { version = "0.1.0", path = "forked/tpt-fem/crates/tpt-fem-solve" }
+tpt-fem-eigen = { version = "0.1.0", path = "forked/tpt-fem/crates/tpt-fem-eigen" }
+tpt-fem-io-abaqus = { version = "0.1.0", path = "forked/tpt-fem/crates/tpt-fem-io-abaqus" }
+tpt-fem-io-exodus = { version = "0.1.0", path = "forked/tpt-fem/crates/tpt-fem-io-exodus" }
+tpt-fem-mesh-gen = { version = "0.1.0", path = "forked/tpt-fem/crates/tpt-fem-mesh-gen" }
+tpt-fem = { version = "0.1.0", path = "forked/tpt-fem/crates/tpt-fem" }
+tpt-fem-dofmap = { version = "0.1.0", path = "forked/tpt-fem/crates/tpt-fem-dofmap" }
+tpt-fem-dynamic = { version = "0.1.0", path = "forked/tpt-fem/crates/tpt-fem-dynamic" }
+tpt-fem-plasticity = { version = "0.1.0", path = "forked/tpt-fem/crates/tpt-fem-plasticity" }
+tpt-fem-hyperelastic = { version = "0.1.0", path = "forked/tpt-fem/crates/tpt-fem-hyperelastic" }
+tpt-fem-composite = { version = "0.1.0", path = "forked/tpt-fem/crates/tpt-fem-composite" }
+tpt-fem-porous = { version = "0.1.0", path = "forked/tpt-fem/crates/tpt-fem-porous" }
+tpt-fem-contact = { version = "0.1.0", path = "forked/tpt-fem/crates/tpt-fem-contact" }
+tpt-fem-fluid = { version = "0.1.0", path = "forked/tpt-fem/crates/tpt-fem-fluid" }
+tpt-fem-coupling = { version = "0.1.0", path = "forked/tpt-fem/crates/tpt-fem-coupling" }
+tpt-for-typestate = { version = "0.1.0", path = "forked/tpt-formal/crates/tpt-for-typestate" }
+tpt-for-assert-const = { version = "0.1.0", path = "forked/tpt-formal/crates/tpt-for-assert-const" }
+tpt-for-contract = { version = "0.1.0", path = "forked/tpt-formal/crates/tpt-for-contract" }
+tpt-for-witness = { version = "0.1.0", path = "forked/tpt-formal/crates/tpt-for-witness" }
+tpt-for-refinement = { version = "0.1.0", path = "forked/tpt-formal/crates/tpt-for-refinement" }
+tpt-for-verified-algorithms = { version = "0.1.0", path = "forked/tpt-formal/crates/tpt-for-verified-algorithms" }
+tpt-for-verified-ode = { version = "0.1.0", path = "forked/tpt-formal/crates/tpt-for-verified-ode" }
+tpt-for-smt-lite = { version = "0.1.0", path = "forked/tpt-formal/crates/tpt-for-smt-lite" }
+tpt-for-proof-ast = { version = "0.1.0", path = "forked/tpt-formal/crates/tpt-for-proof-ast" }
+tpt-for-det-proptest = { version = "0.1.0", path = "forked/tpt-formal/crates/tpt-for-det-proptest" }
+tpt-for-deterministic-sim = { version = "0.1.0", path = "forked/tpt-formal/crates/tpt-for-deterministic-sim" }
+tpt-for-redundancy = { version = "0.1.0", path = "forked/tpt-formal/crates/tpt-for-redundancy" }
+tpt-for-trace-macros = { version = "0.1.0", path = "forked/tpt-formal/crates/tpt-for-trace-macros" }
+tpt-for-model-check = { version = "0.1.0", path = "forked/tpt-formal/crates/tpt-for-model-check" }
+tpt-for-sat = { version = "0.1.0", path = "forked/tpt-formal/crates/tpt-for-sat" }
+tpt-for-vcgen = { version = "0.1.0", path = "forked/tpt-formal/crates/tpt-for-vcgen" }
+tpt-for-abstract-interp = { version = "0.1.0", path = "forked/tpt-formal/crates/tpt-for-abstract-interp" }
+tpt-for-symbolic-exec = { version = "0.1.0", path = "forked/tpt-formal/crates/tpt-for-symbolic-exec" }
+tpt-for-runtime-verify = { version = "0.1.0", path = "forked/tpt-formal/crates/tpt-for-runtime-verify" }
+tpt-sci-ode = { git = "https://github.com/tpt-solutions/tpt-science", branch = "master", package = "tpt-sci-ode" }
+libc = "0.2"
+log = "0.4"
+bytemuck = "1.21"
+chrono = { version = "0.4", features = ["serde"] }
+memmap2 = "0.9"
+tokio = { version = "1", features = ["full"] }
+tower-lsp = "0.20"
+dashmap = "6"
+toml = "1.1"
+ureq = { version = "3", features = ["json"] }
+tpt-math-linalg-dense = { version = "0.1.0", path = "forked/tpt-math/crates/tpt-math-linalg-dense", default-features = false }
+tpt-math-linalg-sparse = { version = "0.1.0", path = "forked/tpt-math/crates/tpt-math-linalg-sparse", default-features = false }
+tpt-math-linalg-complex = { version = "0.1.0", path = "forked/tpt-math/crates/tpt-math-linalg-complex", default-features = false }
+petgraph = { version = "0.8", default-features = false }
+tpt-math-units-dyn = { version = "0.1.0", path = "forked/tpt-math/crates/tpt-math-units-dyn" }
+tpt-math-exact = { version = "0.1.0", path = "forked/tpt-math/crates/tpt-math-exact" }
+tpt-math-linalg-fixed = { version = "0.1.0", path = "forked/tpt-math/crates/tpt-math-linalg-fixed", default-features = false }
+tpt-math-geometry = { version = "0.1.1", path = "forked/tpt-math/crates/tpt-math-geometry", default-features = false }
+tpt-math-spatial = { version = "0.1.0", path = "forked/tpt-math/crates/tpt-math-spatial" }
+tpt-math-prob-core = { version = "0.1.0", path = "forked/tpt-math/crates/tpt-math-prob-core", default-features = false }
+tpt-math-prob-dist = { version = "0.1.0", path = "forked/tpt-math/crates/tpt-math-prob-dist" }
+tpt-math-prob-bayes = { version = "0.1.0", path = "forked/tpt-math/crates/tpt-math-prob-bayes" }
+tpt-math-prob-markov = { version = "0.1.1", path = "forked/tpt-math/crates/tpt-math-prob-markov" }
+tpt-math-prob-monte-carlo = { version = "0.1.0", path = "forked/tpt-math/crates/tpt-math-prob-monte-carlo" }
+tpt-math-prob-sampler = { version = "0.1.0", path = "forked/tpt-math/crates/tpt-math-prob-sampler" }
+tpt-math-prob = { version = "0.1.0", path = "forked/tpt-math/crates/tpt-math-prob" }
+tpt-math-autodiff-fwd = { version = "0.1.0", path = "forked/tpt-math/crates/tpt-math-autodiff-fwd" }
+tpt-math-autodiff-rev = { version = "0.1.0", path = "forked/tpt-math/crates/tpt-math-autodiff-rev" }
+tpt-math-autodiff = { version = "0.1.0", path = "forked/tpt-math/crates/tpt-math-autodiff" }
+tpt-math-symbolic = { version = "0.1.0", path = "forked/tpt-math/crates/tpt-math-symbolic" }
+tpt-math-optimize-general = { version = "0.1.0", path = "forked/tpt-math/crates/tpt-math-optimize-general" }
+tpt-math-optimize-convex = { version = "0.1.0", path = "forked/tpt-math/crates/tpt-math-optimize-convex" }
+tpt-math-optimize = { version = "0.1.0", path = "forked/tpt-math/crates/tpt-math-optimize" }
+tpt-math-signal-fft = { version = "0.1.0", path = "forked/tpt-math/crates/tpt-math-signal-fft" }
+tpt-math-signal-filter = { version = "0.1.0", path = "forked/tpt-math/crates/tpt-math-signal-filter" }
+tpt-math-signal = { version = "0.1.0", path = "forked/tpt-math/crates/tpt-math-signal" }
+tpt-math-interpolate = { version = "0.1.0", path = "forked/tpt-math/crates/tpt-math-interpolate" }
+tpt-sci-sim-core = { path = "forked/tpt-science/crates/tpt-sci-sim-core" }
+rayon = "1"
+proptest = "1"
+bincode = "1"
+wide = "0.7"
+criterion = "0.5"
+tpt-omni = { path = "forked/tpt-rust6/crates/tpt-omni" }
+tpt-io = { path = "forked/tpt-rust6/crates/tpt-io" }
+tpt-sym = { path = "crates/tpt-sym" }
+tpt-grad-macro = { path = "forked/tpt-rust6/crates/tpt-grad-macro" }
+tpt-ui-macro = { path = "crates/tpt-ui-macro" }
+arrow = "54"
+ndarray = { version = "0.16", features = ["rayon"] }
+num-complex = "0.4"
+feos = { version = "0.10", default-features = false, features = ["dft"] }
+feos-dft = { version = "0.10", default-features = false }
+tpt-sci-grid = { version = "0.1.0", path = "forked/tpt-science/crates/tpt-sci-grid" }
+tpt-sci-reaction-network = { version = "0.1.0", path = "forked/tpt-science/crates/tpt-sci-reaction-network" }
+tpt-sci-md = { version = "0.1.0", path = "crates/tpt-sci-md" }
+tpt-sci-dft-classical = { version = "0.1.0", path = "crates/tpt-sci-dft-classical" }
+tpt-sci-kinetics = { version = "0.1.0", path = "crates/tpt-sci-kinetics" }
+tpt-sci-cfd-core = { version = "0.1.0", path = "crates/tpt-sci-cfd-core" }
+tpt-sci-hemodynamics = { version = "0.1.0", path = "crates/tpt-sci-hemodynamics" }
+tpt-sci-electrophys = { version = "0.1.0", path = "crates/tpt-sci-electrophys" }
+tpt-sci-climate = { version = "0.1.0", path = "crates/tpt-sci-climate" }
+tpt-sci-ocean = { version = "0.1.0", path = "crates/tpt-sci-ocean" }
+tpt-sci-dft-electronic = { version = "0.1.0", path = "crates/tpt-sci-dft-electronic" }
+
+[workspace.lints]
+rust = { unsafe_op_in_unsafe_fn = "warn", unsafe_code = "forbid" }
+clippy = { all = "warn", missing_errors_doc = "warn", missing_panics_doc = "warn" }
+
+[profile.wasm-release]
+inherits = "release"
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+strip = "symbols"
+overflow-checks = true

@@ -1,0 +1,34 @@
+[package]
+name = "tpt-sci-dft-classical"
+description = "Classical/soft-matter density functional theory (wraps feos/feos-dft), for the tpt-science pillar"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+repository = "https://github.com/tpt-solutions/tpt-science"
+homepage = "https://github.com/tpt-solutions/tpt-science"
+readme = "README.md"
+documentation = "https://docs.rs/tpt-sci-dft-classical"
+keywords = ["dft", "density-functional-theory", "pcsaft", "adsorption", "science"]
+categories = ["science", "simulation", "chemistry"]
+publish = false
+
+[dependencies]
+feos = { version = "0.10", default-features = false, features = ["dft"] }
+feos-dft = { version = "0.10", default-features = false }
+thiserror = { version = "2" }
+
+[dev-dependencies]
+approx = { version = "0.5" }
+# Dev-only: the `adsorption` example wraps a concrete PC-SAFT functional, which
+# needs the `pcsaft` feature and `feos-core` (State / IdentifierOption).
+feos = { version = "0.10", default-features = false, features = ["pcsaft"] }
+feos-core = "0.10"
+
+[lints]
+rust = { unsafe_op_in_unsafe_fn = "warn", unsafe_code = "allow" }
+clippy = { all = "warn", missing_errors_doc = "warn", missing_panics_doc = "warn" }
+
+[package.metadata.docs.rs]
+all-features = true

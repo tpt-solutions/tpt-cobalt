@@ -1,0 +1,27 @@
+[package]
+name = "tpt-math-geometry"
+version = "0.1.1"
+edition = "2021"
+rust-version = "1.84"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+description = "Geometry module: points, translations, rotations, quaternions, isometries, similarities and projections. Built on tpt-math-linalg-fixed. No allocator."
+readme = "README.md"
+repository = "https://github.com/tpt-solutions/tpt-math"
+homepage = "https://github.com/tpt-solutions/tpt-math"
+documentation = "https://docs.rs/tpt-math-geometry"
+keywords = ["geometry", "rotation", "quaternion", "isometry", "no-std"]
+categories = ["mathematics", "science", "algorithms", "no-std"]
+
+[dependencies]
+tpt-math-linalg-fixed = { path = "../tpt-math-linalg-fixed", version = "0.1.0", default-features = false }
+tpt-math-numeric = { path = "../tpt-math-numeric", version = "0.1.0", default-features = false }
+
+[features]
+default = ["std"]
+std = ["tpt-math-linalg-fixed/std", "tpt-math-numeric/std"]
+alloc = ["tpt-math-linalg-fixed/alloc", "tpt-math-numeric/alloc"]
+
+[lints]
+rust = { unsafe_op_in_unsafe_fn = "warn", unsafe_code = "forbid" }
+clippy = { all = "warn" }

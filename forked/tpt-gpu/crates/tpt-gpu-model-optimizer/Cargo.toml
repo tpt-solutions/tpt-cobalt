@@ -1,0 +1,30 @@
+[package]
+name = "tpt-gpu-model-optimizer"
+version = "0.1.0"
+edition = "2021"
+authors = ["TPT Solutions"]
+license = "MIT OR Apache-2.0 WITH LLVM-exception"
+description = "Hardware-aware LLM model optimizer: quantization, surgical pruning, and TPTF export"
+repository = "https://github.com/tpt-solutions/tpt-gpu"
+documentation = "https://docs.rs/tpt-gpu-model-optimizer"
+readme = "README.md"
+keywords = ["gpu", "llm", "quantization", "inference", "optimization"]
+categories = ["command-line-utilities", "artificial-intelligence"]
+
+[lib]
+name = "tpt_gpu_model_optimizer"
+path = "src/lib.rs"
+
+[[bin]]
+name = "tpt-gpu-model-optimizer"
+path = "src/main.rs"
+
+[dependencies]
+tpt-gpu-shared     = { path = "../tpt-gpu-shared", version = "0.1.0" }
+serde = { version = "1", features = ["derive"] }
+serde_json = { workspace = true }
+clap = { version = "4", features = ["derive"] }
+anyhow = { version = "1" }
+memmap2 = { version = "0.9" }
+bytemuck  = "1.21"
+byteorder  = "1.5"

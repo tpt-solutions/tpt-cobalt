@@ -1,0 +1,27 @@
+[package]
+name = "tpt-math-prob-sampler"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.84"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+description = "Sampling strategies."
+readme = "README.md"
+repository = "https://github.com/tpt-solutions/tpt-math"
+homepage = "https://github.com/tpt-solutions/tpt-math"
+documentation = "https://docs.rs/tpt-math-prob-sampler"
+keywords = ["sampling", "random", "rng", "distribution", "strategies"]
+categories = ["mathematics", "science", "algorithms"]
+
+[dependencies]
+tpt-math-prob-core = { path = "../tpt-math-prob-core", version = "0.1.0", default-features = false }
+
+[features]
+default = ["std"]
+std = ["tpt-math-prob-core/std"]
+alloc = ["tpt-math-prob-core/alloc"]
+
+
+[lints]
+rust = { unsafe_op_in_unsafe_fn = "warn", unsafe_code = "forbid" }
+clippy = { all = "warn" }

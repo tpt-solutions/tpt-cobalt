@@ -1,0 +1,27 @@
+[package]
+name = "tpt-lab"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.81"
+license = "MIT OR Apache-2.0"
+description = "Reactive, strictly-typed notebook environment (tpt-lab)"
+
+[dependencies]
+tpt-omni = { path = "../tpt-omni" }
+arrow = { version = "54" }
+thiserror = { version = "1" }
+tpt-viz = { path = "../tpt-viz", optional = true }
+# LSP server (feature `lsp`): source analysis + a stdio JSON-RPC server.
+syn = { version = "2", features = ["full", "visit"], optional = true }
+serde_json = { version = "1", optional = true }
+proc-macro2 = { version = "1", features = ["span-locations"], optional = true }
+
+[features]
+default = []
+viz = ["dep:tpt-viz"]
+lsp = ["dep:syn", "dep:serde_json", "dep:proc-macro2"]
+
+[[bin]]
+name = "tpt-lab-lsp"
+path = "src/bin/tpt-lab-lsp.rs"
+required-features = ["lsp"]

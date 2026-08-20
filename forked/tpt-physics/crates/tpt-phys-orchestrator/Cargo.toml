@@ -1,0 +1,34 @@
+[package]
+name = "tpt-phys-orchestrator"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.84"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+description = "AI-native multiphysics coupling layer: adaptive time-stepping, solver coordination, co-simulation, and RL hooks for tpt-physics."
+repository = "https://github.com/tpt-solutions/tpt-physics"
+homepage = "https://github.com/tpt-solutions/tpt-physics"
+readme = "README.md"
+keywords = ["multiphysics", "orchestration", "co-simulation", "reinforcement-learning", "simulation"]
+categories = ["science", "mathematics", "simulation"]
+
+[dependencies]
+tpt-sci-sim-core = { path = "../../../tpt-science/crates/tpt-sci-sim-core" }
+tpt-math-autodiff = { path = "../../../tpt-math/crates/tpt-math-autodiff" }
+tpt-math-linalg-dense = { path = "../../../tpt-math/crates/tpt-math-linalg-dense" }
+tpt-fem-mesh = { path = "../../../tpt-fem/crates/tpt-fem-mesh" }
+tpt-phys-core = { path = "../tpt-phys-core" }
+tpt-phys-fsi = { path = "../tpt-phys-fsi" }
+tpt-phys-cfd = { path = "../tpt-phys-cfd" }
+tpt-phys-thermal-struct = { path = "../tpt-phys-thermal-struct" }
+tpt-phys-electro-thermal = { path = "../tpt-phys-electro-thermal" }
+tracing = { version = "0.1" }
+
+[dev-dependencies]
+# Enables the `uq` (Monte-Carlo uncertainty quantification) feature for the
+# combined UQ + orchestrator example/tests.
+tpt-phys-core = { path = "../tpt-phys-core", features = ["uq"] }
+
+[lints]
+rust = { unsafe_op_in_unsafe_fn = "warn", unsafe_code = "forbid" }
+clippy = { all = "warn" }

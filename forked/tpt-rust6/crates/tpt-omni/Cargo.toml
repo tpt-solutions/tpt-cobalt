@@ -1,0 +1,18 @@
+[package]
+name = "tpt-omni"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.81"
+license = "MIT OR Apache-2.0"
+description = "Arrow-backed unified data engine: tables, tensors, N-D arrays, and sparse structures in one memory layout"
+
+[dependencies]
+arrow = { version = "54" }
+ndarray = { version = "0.16", features = ["rayon"] }
+rayon = { version = "1" }
+thiserror = { version = "1" }
+memmap2 = "0.9"
+
+[features]
+default = []
+wasm = []

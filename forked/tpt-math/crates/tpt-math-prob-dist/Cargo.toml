@@ -1,0 +1,31 @@
+[package]
+name = "tpt-math-prob-dist"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.84"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+description = "Standard distributions (wrap rand_distr)."
+readme = "README.md"
+repository = "https://github.com/tpt-solutions/tpt-math"
+homepage = "https://github.com/tpt-solutions/tpt-math"
+documentation = "https://docs.rs/tpt-math-prob-dist"
+keywords = ["probability", "distributions", "statistics", "random", "sampling"]
+categories = ["mathematics", "science", "algorithms"]
+
+[dependencies]
+# `rand` 0.9 is the `rand_core`/`RngCore` version that `rand_distr` 0.5 is built
+# against; the adapter in this crate must implement *that* `RngCore`.
+rand = { version = "0.9", default-features = false }
+rand_distr = { version = "0.5.1", default-features = false }
+tpt-math-prob-core = { path = "../tpt-math-prob-core", version = "0.1.0", default-features = false }
+
+[features]
+default = ["std"]
+std = ["alloc", "rand/std", "rand_distr/std", "tpt-math-prob-core/std"]
+alloc = ["rand/alloc", "rand_distr/alloc", "tpt-math-prob-core/alloc"]
+
+
+[lints]
+rust = { unsafe_op_in_unsafe_fn = "warn", unsafe_code = "forbid" }
+clippy = { all = "warn" }

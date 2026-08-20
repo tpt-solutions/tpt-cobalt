@@ -1,0 +1,23 @@
+[package]
+name = "tpt-for-deterministic-sim"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+description = "Deterministic, seedable simulation harness."
+
+readme = "README.md"
+keywords = ["simulation", "deterministic", "testing", "reproducible", "seed"]
+categories = ["development-tools::testing", "rust-patterns"]
+
+[dependencies]
+
+[lints]
+rust = { unsafe_op_in_unsafe_fn = "warn" }
+clippy = { all = "warn" }
+
+[[example]]
+name = "deterministic_sim_basic"
+path = "examples/queue_simulation.rs"
+

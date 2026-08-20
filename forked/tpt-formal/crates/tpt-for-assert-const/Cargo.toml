@@ -1,0 +1,28 @@
+[package]
+name = "tpt-for-assert-const"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+description = "Compile-time assertions (const_assert / const_assert_eq / type-level checks)."
+
+readme = "README.md"
+keywords = ["const", "assert", "compile-time", "static-assert", "type-level"]
+categories = ["rust-patterns", "no-std"]
+
+[dependencies]
+
+[features]
+default = ["std"]
+std = []
+alloc = []
+
+[lints]
+rust = { unsafe_op_in_unsafe_fn = "warn" }
+clippy = { all = "warn" }
+
+[[example]]
+name = "assert_const_basic"
+path = "examples/ring_buffer_guards.rs"
+

@@ -1,0 +1,28 @@
+[package]
+name = "tpt-gpu-runtime"
+version = "0.1.0"
+edition = "2021"
+description = "TPT Runtime - Core library"
+license = "MIT OR Apache-2.0 WITH LLVM-exception"
+authors = ["TPT Solutions"]
+repository = "https://github.com/tpt-solutions/tpt-gpu"
+documentation = "https://docs.rs/tpt-gpu-runtime"
+readme = "README.md"
+keywords = ["gpu", "runtime", "compute", "inference", "hpc"]
+categories = ["hardware-support", "artificial-intelligence"]
+
+[dependencies]
+bytemuck = "1.21"
+memmap2 = { version = "0.9" }
+tpt-gpu-primitives = { path = "../tpt-gpu-primitives", version = "0.1.0" }
+tpt-gpu-compiler = { path = "../tpt-gpu-compiler", version = "0.1.0" }
+tpt-gpu-uir-adapter = { path = "../tpt-gpu-uir-adapter" }
+
+[features]
+default = []
+# Enable real CUDA device backend (requires an NVIDIA GPU + CUDA driver/runtime).
+# Off by default so hardware-less `cargo test` uses the simulated path.
+cuda = ["tpt-gpu-primitives/cuda"]
+
+[dev-dependencies]
+tpt-gpu-uir-adapter = { path = "../tpt-gpu-uir-adapter" }

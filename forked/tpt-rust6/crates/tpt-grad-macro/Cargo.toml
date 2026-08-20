@@ -1,0 +1,15 @@
+[package]
+name = "tpt-grad-macro"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.81"
+license = "MIT OR Apache-2.0"
+description = "Procedural macros for tpt-grad: #[derive_grad], #[derive_vmap], #[derive_jit]"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = { version = "2", features = ["full"] }
+quote = "1"
+proc-macro2 = "1"

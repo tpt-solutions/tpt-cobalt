@@ -1,0 +1,29 @@
+[package]
+name = "tpt-phys-dem"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.84"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+description = "Discrete Element Method: Hertz-Mindlin contact, spatial hashing, and SIMD narrow-phase resolution."
+repository = "https://github.com/tpt-solutions/tpt-physics"
+homepage = "https://github.com/tpt-solutions/tpt-physics"
+readme = "README.md"
+keywords = ["dem", "granular", "contact", "particles", "simulation"]
+categories = ["science", "simulation", "mathematics"]
+
+[dependencies]
+tpt-phys-core = { path = "../tpt-phys-core" }
+rayon = { version = "1" }
+wide = { version = "0.7" }
+tracing = { version = "0.1" }
+serde = { version = "1", features = ["derive"] }
+bincode = { version = "1" }
+
+[dev-dependencies]
+proptest = { version = "1" }
+criterion = { version = "0.5" }
+
+[[bench]]
+name = "large_scale"
+harness = false

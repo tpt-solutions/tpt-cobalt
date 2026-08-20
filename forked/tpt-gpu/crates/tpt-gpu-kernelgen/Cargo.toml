@@ -1,0 +1,26 @@
+[package]
+name = "tpt-gpu-kernelgen"
+version = "0.1.0"
+edition = "2021"
+authors = ["TPT Solutions"]
+description = "TPT GPU kernel generator CLI"
+license = "MIT OR Apache-2.0 WITH LLVM-exception"
+repository = "https://github.com/tpt-solutions/tpt-gpu"
+documentation = "https://docs.rs/tpt-gpu-kernelgen"
+readme = "README.md"
+keywords = ["gpu", "kernels", "codegen", "tptir", "hpc"]
+categories = ["command-line-utilities", "development-tools"]
+
+[[bin]]
+name = "tpt-gpu-kernelgen"
+path = "src/main.rs"
+
+[dependencies]
+tpt-gpu-compiler = { path = "../tpt-gpu-compiler", version = "0.1.0" }
+tpt-gpu-shared = { path = "../tpt-gpu-shared", version = "0.1.0" }
+tpt-gpu-uir-adapter = { path = "../tpt-gpu-uir-adapter" }
+clap = { version = "4", features = ["derive"] }
+anyhow = { version = "1" }
+
+[dev-dependencies]
+tpt-gpu-uir-adapter = { path = "../tpt-gpu-uir-adapter" }

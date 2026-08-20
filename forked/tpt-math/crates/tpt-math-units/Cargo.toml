@@ -1,0 +1,28 @@
+[package]
+name = "tpt-math-units"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.84"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+description = "Compile-time typed units (wrap uom)."
+readme = "README.md"
+repository = "https://github.com/tpt-solutions/tpt-math"
+homepage = "https://github.com/tpt-solutions/tpt-math"
+documentation = "https://docs.rs/tpt-math-units"
+keywords = ["units", "dimensional-analysis", "types", "no-std", "physics"]
+categories = ["mathematics", "science", "no-std"]
+
+[dependencies]
+uom = { version = "0.38.0", default-features = false, features = ["si", "f32", "f64", "autoconvert"] }
+num-traits = { version = "0.2.19", default-features = false, features = ["libm"] }
+
+[features]
+default = ["std"]
+std = ["num-traits/std"]
+alloc = []
+
+
+[lints]
+rust = { unsafe_op_in_unsafe_fn = "warn", unsafe_code = "forbid" }
+clippy = { all = "warn" }

@@ -1,0 +1,21 @@
+[package]
+name = "tpt-eng-timeseries"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+description = "Umbrella: re-exports timeseries core + align + gap."
+readme = "README.md"
+keywords = ["engineering", "timeseries", "sensors", "alignment", "data"]
+categories = ["science", "data-structures", "algorithms"]
+repository = "https://github.com/tpt-solutions/tpt-engineering"
+homepage = "https://github.com/tpt-solutions/tpt-engineering"
+
+[dependencies]
+tpt-eng-timeseries-core = { path = "../tpt-eng-timeseries-core", version = "0.1.0" }
+tpt-eng-timeseries-align = { path = "../tpt-eng-timeseries-align", version = "0.1.0" }
+tpt-eng-timeseries-gap = { path = "../tpt-eng-timeseries-gap", version = "0.1.0" }
+
+[lints]
+rust = { unsafe_op_in_unsafe_fn = "warn", unsafe_code = "forbid" }
+clippy = { all = "warn", missing_errors_doc = "warn", missing_panics_doc = "warn" }

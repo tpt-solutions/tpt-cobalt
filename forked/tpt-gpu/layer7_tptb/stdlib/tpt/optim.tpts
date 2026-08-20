@@ -1,0 +1,248 @@
+// tpt/optim.tpts — TPT Script Standard Library: Optimisers
+//
+// Provides stateless step functions for common gradient-based optimisers.
+// All functions operate on individual parameter tensors; the caller
+// maintains the running state (moments, velocity, etc.) and loops over
+// parameter groups.
+//
+// Usage: import tpt.optim
+
+import tpt
+
+// ---------------------------------------------------------------------------
+// SGD with momentum
+// ---------------------------------------------------------------------------
+
+@doc("Stochastic Gradient Descent step with optional momentum and weight decay.")
+@input("param:       Tensor[f32, *]", description="Parameter tensor (current value)")
+@input("grad:        Tensor[f32, *]", description="Gradient of the loss w.r.t. param")
+@input("velocity:    Tensor[f32, *]", description="Momentum buffer (same shape as param, zeros initially)")
+@input("lr:          f32",            description="Learning rate (e.g. 0.01)")
+@input("momentum:    f32",            description="Momentum coefficient (e.g. 0.9; use 0 to disable)")
+@input("weight_decay: f32",           description="L2 regularisation coefficient (e.g. 1e-4; use 0 to disable)")
+@input("dampening:   f32",            description="Dampening for momentum (default 0.0)")
+@input("nesterov:    bool",           description="Apply Nesterov momentum correction (default false)")
+@output("(Tensor[f32, *], Tensor[f32, *])", description="Tuple of (updated_param, updated_velocity)")
+@requires_gpu(true)
+@differentiable(false)
+@complexity("O(n)")
+fn sgd_step(param:        Tensor[f32, *],
+            grad:         Tensor[f32, *],
+            velocity:     Tensor[f32, *],
+            lr:           f32,
+            momentum:     f32,
+            weight_decay: f32,
+            dampening:    f32,
+            nesterov:     bool) -> (Tensor[f32, *], Tensor[f32, *]) {
+    // L2 weight decay: add lambda * param to gradient
+    let g = tpt.add(grad, tpt.mul_scalar(param, weight_decay))
+
+    // Momentum: v = momentum * v + (1 - dampening) * g
+    let v_new = tpt.add(tpt.mul_scalar(velocity, momentum),
+                         tpt.mul_scalar(g, 1.0 - dampening))
+
+    // Nesterov correction: effective gradient = g + momentum * v_new
+    let effective_g = if nesterov {
+        tpt.add(g, tpt.mul_scalar(v_new, momentum))
+    } else {
+        v_new
+    }
+
+    let param_new = tpt.sub(param, tpt.mul_scalar(effective_g, lr))
+    return (param_new, v_new)
+}
+
+// ---------------------------------------------------------------------------
+// Adam
+// ---------------------------------------------------------------------------
+
+@doc("Adam optimiser step: adaptive moment estimation.")
+@input("param:  Tensor[f32, *]", description="Parameter tensor")
+@input("grad:   Tensor[f32, *]", description="Gradient")
+@input("m:      Tensor[f32, *]", description="First moment (mean) estimate — zeros on step 1")
+@input("v:      Tensor[f32, *]", description="Second moment (uncentred variance) estimate — zeros on step 1")
+@input("step:   i64",            description="Current step count (1-indexed)")
+@input("lr:     f32",            description="Learning rate (e.g. 1e-3)")
+@input("beta1:  f32",            description="First moment decay (default 0.9)")
+@input("beta2:  f32",            description="Second moment decay (default 0.999)")
+@input("eps:    f32",            description="Numerical stability (default 1e-8)")
+@output("(Tensor[f32, *], Tensor[f32, *], Tensor[f32, *])", description="(updated_param, updated_m, updated_v)")
+@requires_gpu(true)
+@differentiable(false)
+@complexity("O(n)")
+fn adam_step(param: Tensor[f32, *],
+             grad:  Tensor[f32, *],
+             m:     Tensor[f32, *],
+             v:     Tensor[f32, *],
+             step:  i64,
+             lr:    f32,
+             beta1: f32,
+             beta2: f32,
+             eps:   f32) -> (Tensor[f32, *], Tensor[f32, *], Tensor[f32, *]) {
+    let m_new   = tpt.add(tpt.mul_scalar(m, beta1), tpt.mul_scalar(grad, 1.0 - beta1))
+    let v_new   = tpt.add(tpt.mul_scalar(v, beta2),
+                           tpt.mul_scalar(tpt.mul(grad, grad), 1.0 - beta2))
+
+    let step_f  = tpt.cast(step, dtype=f32)
+    let bc1     = 1.0 - tpt.pow(beta1, step_f)
+    let bc2     = 1.0 - tpt.pow(beta2, step_f)
+    let m_hat   = tpt.div_scalar(m_new, bc1)
+    let v_hat   = tpt.div_scalar(v_new, bc2)
+
+    let denom     = tpt.add_scalar(tpt.sqrt(v_hat), eps)
+    let update    = tpt.mul_scalar(tpt.div(m_hat, denom), lr)
+    let param_new = tpt.sub(param, update)
+    return (param_new, m_new, v_new)
+}
+
+// ---------------------------------------------------------------------------
+// AdamW (decoupled weight decay)
+// ---------------------------------------------------------------------------
+
+@doc("AdamW optimiser step: Adam with decoupled weight decay regularisation.")
+@input("param:  Tensor[f32, *]", description="Parameter tensor")
+@input("grad:   Tensor[f32, *]", description="Gradient")
+@input("m:      Tensor[f32, *]", description="First moment estimate — zeros on step 1")
+@input("v:      Tensor[f32, *]", description="Second moment estimate — zeros on step 1")
+@input("step:   i64",            description="Current step count (1-indexed)")
+@input("lr:     f32",            description="Learning rate (e.g. 1e-3)")
+@input("beta1:  f32",            description="First moment decay (default 0.9)")
+@input("beta2:  f32",            description="Second moment decay (default 0.999)")
+@input("eps:    f32",            description="Numerical stability (default 1e-8)")
+@input("wd:     f32",            description="Decoupled weight decay (default 0.01)")
+@output("(Tensor[f32, *], Tensor[f32, *], Tensor[f32, *])", description="(updated_param, updated_m, updated_v)")
+@requires_gpu(true)
+@differentiable(false)
+@complexity("O(n)")
+fn adamw_step(param: Tensor[f32, *],
+              grad:  Tensor[f32, *],
+              m:     Tensor[f32, *],
+              v:     Tensor[f32, *],
+              step:  i64,
+              lr:    f32,
+              beta1: f32,
+              beta2: f32,
+              eps:   f32,
+              wd:    f32) -> (Tensor[f32, *], Tensor[f32, *], Tensor[f32, *]) {
+    // Decoupled weight decay applied before the gradient update
+    let param_wd = tpt.mul_scalar(param, 1.0 - lr * wd)
+
+    let m_new   = tpt.add(tpt.mul_scalar(m, beta1), tpt.mul_scalar(grad, 1.0 - beta1))
+    let v_new   = tpt.add(tpt.mul_scalar(v, beta2),
+                           tpt.mul_scalar(tpt.mul(grad, grad), 1.0 - beta2))
+
+    let step_f  = tpt.cast(step, dtype=f32)
+    let bc1     = 1.0 - tpt.pow(beta1, step_f)
+    let bc2     = 1.0 - tpt.pow(beta2, step_f)
+    let m_hat   = tpt.div_scalar(m_new, bc1)
+    let v_hat   = tpt.div_scalar(v_new, bc2)
+
+    let denom     = tpt.add_scalar(tpt.sqrt(v_hat), eps)
+    let update    = tpt.mul_scalar(tpt.div(m_hat, denom), lr)
+    let param_new = tpt.sub(param_wd, update)
+    return (param_new, m_new, v_new)
+}
+
+// ---------------------------------------------------------------------------
+// RMSProp
+// ---------------------------------------------------------------------------
+
+@doc("RMSProp optimiser step: adaptive learning rate based on running squared gradients.")
+@input("param:  Tensor[f32, *]", description="Parameter tensor")
+@input("grad:   Tensor[f32, *]", description="Gradient")
+@input("sq_avg: Tensor[f32, *]", description="Running mean of squared gradients — zeros on step 1")
+@input("lr:     f32",            description="Learning rate (e.g. 1e-2)")
+@input("alpha:  f32",            description="Smoothing coefficient (default 0.99)")
+@input("eps:    f32",            description="Numerical stability (default 1e-8)")
+@input("wd:     f32",            description="Weight decay (default 0.0)")
+@output("(Tensor[f32, *], Tensor[f32, *])", description="(updated_param, updated_sq_avg)")
+@requires_gpu(true)
+@differentiable(false)
+@complexity("O(n)")
+fn rmsprop_step(param:  Tensor[f32, *],
+                grad:   Tensor[f32, *],
+                sq_avg: Tensor[f32, *],
+                lr:     f32,
+                alpha:  f32,
+                eps:    f32,
+                wd:     f32) -> (Tensor[f32, *], Tensor[f32, *]) {
+    let g       = tpt.add(grad, tpt.mul_scalar(param, wd))
+    let sq_new  = tpt.add(tpt.mul_scalar(sq_avg, alpha),
+                           tpt.mul_scalar(tpt.mul(g, g), 1.0 - alpha))
+    let denom   = tpt.add_scalar(tpt.sqrt(sq_new), eps)
+    let update  = tpt.mul_scalar(tpt.div(g, denom), lr)
+    let p_new   = tpt.sub(param, update)
+    return (p_new, sq_new)
+}
+
+// ---------------------------------------------------------------------------
+// Adagrad
+// ---------------------------------------------------------------------------
+
+@doc("Adagrad optimiser step: adapt per-parameter learning rates by accumulating squared gradients.")
+@input("param:   Tensor[f32, *]", description="Parameter tensor")
+@input("grad:    Tensor[f32, *]", description="Gradient")
+@input("sq_sum:  Tensor[f32, *]", description="Accumulated sum of squared gradients — zeros on step 1")
+@input("lr:      f32",            description="Learning rate (e.g. 0.01)")
+@input("lr_decay: f32",           description="Learning rate decay per step (default 0.0)")
+@input("eps:     f32",            description="Numerical stability (default 1e-10)")
+@input("wd:      f32",            description="Weight decay (default 0.0)")
+@input("step:    i64",            description="Current step count (1-indexed)")
+@output("(Tensor[f32, *], Tensor[f32, *])", description="(updated_param, updated_sq_sum)")
+@requires_gpu(true)
+@differentiable(false)
+@complexity("O(n)")
+fn adagrad_step(param:    Tensor[f32, *],
+                grad:     Tensor[f32, *],
+                sq_sum:   Tensor[f32, *],
+                lr:       f32,
+                lr_decay: f32,
+                eps:      f32,
+                wd:       f32,
+                step:     i64) -> (Tensor[f32, *], Tensor[f32, *]) {
+    let step_f   = tpt.cast(step, dtype=f32)
+    let clr      = lr / (1.0 + (step_f - 1.0) * lr_decay)
+    let g        = tpt.add(grad, tpt.mul_scalar(param, wd))
+    let sq_new   = tpt.add(sq_sum, tpt.mul(g, g))
+    let denom    = tpt.add_scalar(tpt.sqrt(sq_new), eps)
+    let update   = tpt.mul_scalar(tpt.div(g, denom), clr)
+    let p_new    = tpt.sub(param, update)
+    return (p_new, sq_new)
+}
+
+// ---------------------------------------------------------------------------
+// Learning Rate Schedulers (return the new LR value; no state)
+// ---------------------------------------------------------------------------
+
+@doc("Cosine annealing learning rate: lr_min + 0.5*(lr_max-lr_min)*(1 + cos(pi*step/T_max))")
+@input("lr_max:  f32", description="Peak learning rate")
+@input("lr_min:  f32", description="Minimum learning rate (default 0.0)")
+@input("step:    i64", description="Current step (0-indexed)")
+@input("t_max:   i64", description="Half-period in steps")
+@output("f32", description="Learning rate for the current step")
+@requires_gpu(false)
+@differentiable(false)
+@complexity("O(1)")
+fn cosine_lr(lr_max: f32, lr_min: f32, step: i64, t_max: i64) -> f32 {
+    let step_f  = tpt.cast(step, dtype=f32)
+    let tmax_f  = tpt.cast(t_max, dtype=f32)
+    let cos_val = tpt.cos(3.141592653589793 * step_f / tmax_f)
+    let lr      = lr_min + 0.5 * (lr_max - lr_min) * (1.0 + cos_val)
+    return lr
+}
+
+@doc("Linear warmup learning rate schedule: ramp from 0 to lr_max over warmup_steps.")
+@input("lr_max:       f32", description="Target learning rate after warmup")
+@input("step:         i64", description="Current step (0-indexed)")
+@input("warmup_steps: i64", description="Number of warmup steps")
+@output("f32", description="Learning rate for the current step")
+@requires_gpu(false)
+@differentiable(false)
+@complexity("O(1)")
+fn linear_warmup_lr(lr_max: f32, step: i64, warmup_steps: i64) -> f32 {
+    let step_f   = tpt.cast(step, dtype=f32)
+    let warm_f   = tpt.cast(warmup_steps, dtype=f32)
+    let progress = tpt.min_scalar(step_f / warm_f, 1.0)
+    let lr       = lr_max * progress
+    return lr
+}

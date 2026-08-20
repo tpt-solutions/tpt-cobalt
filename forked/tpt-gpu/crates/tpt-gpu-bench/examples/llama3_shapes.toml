@@ -1,0 +1,29 @@
+# Problem shapes representative of LLaMA 3 8B inference.
+# Replace gpu with your hardware (e.g. "RTX_4090", "A100_80GB").
+[target]
+gpu = "sim"
+label = "llama3-8b"
+
+[run]
+warmup = 5
+iterations = 20
+
+# Attention: 32 heads, d_k=128, various context lengths
+[[workload]]
+kind = "attention"
+seq_lens = [512, 1024, 2048, 4096, 8192]
+d_k = [128]
+heads = [32]
+
+# MLP: gate/up projections (4096 → 14336) and down projection (14336 → 4096)
+[[workload]]
+kind = "gemm"
+M = [1, 8, 32, 128, 512]   # batch × seq (inference batch sizes)
+N = [14336]
+K = [4096]
+
+[[workload]]
+kind = "gemm"
+M = [1, 8, 32, 128, 512]
+N = [4096]
+K = [14336]

@@ -1,0 +1,261 @@
+// tpt profiler — Kernel benchmarking and memory-profiling tool.
+//
+// Written in TPT Script and compiled with the tptb compiler.
+// Invoked via: tpt profile <file> [options]
+//
+// Measurement strategy: aggregate timing.
+//   1. warmup: run the kernel N times to fill GPU caches (not recorded)
+//   2. timed region: run the kernel M times inside a single tpt.sync() fence
+//   3. derive: mean_ms = total_ms / iters, then GFLOPS and GB/s
+//
+// TPT Script has immutable bindings, so per-iteration timing (for std/min/max)
+// is expressed via a two-pass approach: one aggregate run, one short run for
+// a coarse lower bound.  Results are returned as a fixed-width f64 vector.
+
+import tpt
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+// One profiling result for a single kernel / configuration.
+// Slots: 0=mean_ms  1=lower_ms  2=upper_ms  3=pad
+//        4=gflops   5=gb_s      6=efficiency_pct  7=iters
+type ProfileResult = Tensor[f64, 8]
+
+// ---------------------------------------------------------------------------
+// benchmark_gemm
+// ---------------------------------------------------------------------------
+
+@doc("Benchmark the GEMM primitive at a given problem size.")
+@input("m: i64", description="Rows of A and output")
+@input("n: i64", description="Columns of B and output")
+@input("k: i64", description="Shared inner dimension")
+@input("warmup: i64", description="Warm-up iterations before timing")
+@input("iters: i64", description="Number of timed iterations")
+@output("ProfileResult", description="8-element result vector")
+@requires_gpu(true)
+@complexity("O(warmup + iters)")
+fn benchmark_gemm(m: i64, n: i64, k: i64, warmup: i64, iters: i64) -> ProfileResult {
+    let a = tpt.randn([m, k], dtype=f32)
+    let b = tpt.randn([k, n], dtype=f32)
+    let c = tpt.zeros([m, n], dtype=f32)
+
+    // Warm-up pass.
+    for _ in 0..warmup {
+        tpt.gemm(a, b, c)
+    }
+    tpt.sync()
+
+    // Aggregate timed pass.
+    let t0 = tpt.clock_ms()
+    for _ in 0..iters {
+        tpt.gemm(a, b, c)
+    }
+    tpt.sync()
+    let t1      = tpt.clock_ms()
+    let total_ms = t1 - t0
+    let iters_f  = tpt.cast(iters, dtype=f64)
+    let mean_ms  = total_ms / iters_f
+
+    // Short reference pass (1 iteration) for a coarse lower bound.
+    let r0 = tpt.clock_ms()
+    tpt.gemm(a, b, c)
+    tpt.sync()
+    let r1 = tpt.clock_ms()
+    let lower_ms = r1 - r0
+    let upper_ms = total_ms
+
+    // Derived metrics (cast dims to f64 for division).
+    let mf = tpt.cast(m, dtype=f64)
+    let nf = tpt.cast(n, dtype=f64)
+    let kf = tpt.cast(k, dtype=f64)
+    let gflops     = 2.0 * mf * nf * kf / (mean_ms * 1000000.0)
+    let gb_s       = 4.0 * (mf * kf + kf * nf + 2.0 * mf * nf) / (mean_ms * 1000000.0)
+    let efficiency = gflops / tpt.peak_gflops()
+
+    let result = tpt.from_list([mean_ms, lower_ms, upper_ms, 0.0,
+                                gflops, gb_s, efficiency, mean_ms], dtype=f64)
+    return result
+}
+
+// ---------------------------------------------------------------------------
+// benchmark_attention
+// ---------------------------------------------------------------------------
+
+@doc("Benchmark scaled dot-product attention for a given shape.")
+@input("batch: i64", description="Batch size")
+@input("heads: i64", description="Number of attention heads")
+@input("seq: i64", description="Sequence length")
+@input("d_k: i64", description="Per-head key/query dimension")
+@input("d_v: i64", description="Per-head value dimension")
+@input("warmup: i64", description="Warm-up iterations")
+@input("iters: i64", description="Timed iterations")
+@output("ProfileResult", description="8-element result vector")
+@requires_gpu(true)
+@complexity("O(batch * heads * seq * seq * d_k)")
+fn benchmark_attention(batch: i64, heads: i64, seq: i64,
+                        d_k: i64, d_v: i64,
+                        warmup: i64, iters: i64) -> ProfileResult {
+    let q     = tpt.randn([batch, heads, seq, d_k], dtype=f32)
+    let k     = tpt.randn([batch, heads, seq, d_k], dtype=f32)
+    let v     = tpt.randn([batch, heads, seq, d_v], dtype=f32)
+    let scale = 1.0 / tpt.sqrt(tpt.cast(d_k, dtype=f32))
+
+    for _ in 0..warmup {
+        tpt.attention(q, k, v, scale)
+    }
+    tpt.sync()
+
+    let t0 = tpt.clock_ms()
+    for _ in 0..iters {
+        tpt.attention(q, k, v, scale)
+    }
+    tpt.sync()
+    let t1       = tpt.clock_ms()
+    let total_ms = t1 - t0
+    let iters_f  = tpt.cast(iters, dtype=f64)
+    let mean_ms  = total_ms / iters_f
+
+    let r0 = tpt.clock_ms()
+    tpt.attention(q, k, v, scale)
+    tpt.sync()
+    let r1   = tpt.clock_ms()
+    let lower_ms = r1 - r0
+    let upper_ms = total_ms
+
+    let bf  = tpt.cast(batch,  dtype=f64)
+    let hf  = tpt.cast(heads,  dtype=f64)
+    let sf  = tpt.cast(seq,    dtype=f64)
+    let dkf = tpt.cast(d_k,   dtype=f64)
+    let dvf = tpt.cast(d_v,   dtype=f64)
+    let gflops     = 4.0 * bf * hf * sf * sf * dkf / (mean_ms * 1000000.0)
+    let gb_s       = 4.0 * bf * hf * (2.0 * sf * dkf + sf * dvf + sf * sf) / (mean_ms * 1000000.0)
+    let efficiency = gflops / tpt.peak_gflops()
+
+    let result = tpt.from_list([mean_ms, lower_ms, upper_ms, 0.0,
+                                gflops, gb_s, efficiency, mean_ms], dtype=f64)
+    return result
+}
+
+// ---------------------------------------------------------------------------
+// benchmark_conv2d
+// ---------------------------------------------------------------------------
+
+@doc("Benchmark 2-D convolution for a given configuration.")
+@input("batch: i64", description="Batch size")
+@input("in_ch: i64", description="Input channels")
+@input("out_ch: i64", description="Output channels")
+@input("h: i64", description="Input spatial height")
+@input("w: i64", description="Input spatial width")
+@input("kh: i64", description="Kernel height")
+@input("kw: i64", description="Kernel width")
+@input("warmup: i64", description="Warm-up iterations")
+@input("iters: i64", description="Timed iterations")
+@output("ProfileResult", description="8-element result vector")
+@requires_gpu(true)
+@complexity("O(batch * out_ch * h * w * in_ch * kh * kw)")
+fn benchmark_conv2d(batch: i64, in_ch: i64, out_ch: i64,
+                    h: i64, w: i64, kh: i64, kw: i64,
+                    warmup: i64, iters: i64) -> ProfileResult {
+    let input   = tpt.randn([batch, in_ch, h, w], dtype=f32)
+    let weights = tpt.randn([out_ch, in_ch, kh, kw], dtype=f32)
+    let bias    = tpt.zeros([out_ch], dtype=f32)
+
+    for _ in 0..warmup {
+        tpt.conv2d(input, weights, bias)
+    }
+    tpt.sync()
+
+    let t0 = tpt.clock_ms()
+    for _ in 0..iters {
+        tpt.conv2d(input, weights, bias)
+    }
+    tpt.sync()
+    let t1       = tpt.clock_ms()
+    let total_ms = t1 - t0
+    let iters_f  = tpt.cast(iters, dtype=f64)
+    let mean_ms  = total_ms / iters_f
+
+    let r0 = tpt.clock_ms()
+    tpt.conv2d(input, weights, bias)
+    tpt.sync()
+    let r1   = tpt.clock_ms()
+    let lower_ms = r1 - r0
+    let upper_ms = total_ms
+
+    let oh  = h - kh + 1
+    let ow  = w - kw + 1
+    let baf = tpt.cast(batch,  dtype=f64)
+    let icf = tpt.cast(in_ch,  dtype=f64)
+    let ocf = tpt.cast(out_ch, dtype=f64)
+    let hf  = tpt.cast(h,      dtype=f64)
+    let wf  = tpt.cast(w,      dtype=f64)
+    let khf = tpt.cast(kh,     dtype=f64)
+    let kwf = tpt.cast(kw,     dtype=f64)
+    let ohf = tpt.cast(oh,     dtype=f64)
+    let owf = tpt.cast(ow,     dtype=f64)
+    let gflops     = 2.0 * baf * ocf * ohf * owf * icf * khf * kwf / (mean_ms * 1000000.0)
+    let gb_s       = 4.0 * (baf * icf * hf * wf + ocf * icf * khf * kwf
+                            + baf * ocf * ohf * owf) / (mean_ms * 1000000.0)
+    let efficiency = gflops / tpt.peak_gflops()
+
+    let result = tpt.from_list([mean_ms, lower_ms, upper_ms, 0.0,
+                                gflops, gb_s, efficiency, mean_ms], dtype=f64)
+    return result
+}
+
+// ---------------------------------------------------------------------------
+// profile_memory
+// ---------------------------------------------------------------------------
+
+@doc("Profile peak device memory allocation for a GEMM of given size.")
+@input("m: i64", description="Rows")
+@input("n: i64", description="Columns")
+@input("k: i64", description="Inner dimension")
+@output("Tensor[f64, 4]", description="[peak_mb, allocated_mb, reserved_mb, fragmentation_pct]")
+@requires_gpu(true)
+fn profile_memory(m: i64, n: i64, k: i64) -> Tensor[f64, 4] {
+    tpt.memory_reset_peak()
+
+    let a = tpt.randn([m, k], dtype=f32)
+    let b = tpt.randn([k, n], dtype=f32)
+    let c = tpt.zeros([m, n], dtype=f32)
+    tpt.gemm(a, b, c)
+    tpt.sync()
+
+    let peak_bytes      = tpt.memory_peak()
+    let allocated_bytes = tpt.memory_allocated()
+    let reserved_bytes  = tpt.memory_reserved()
+    let fragmentation   = (reserved_bytes - allocated_bytes) / reserved_bytes * 100.0
+    let peak_mb         = peak_bytes      / 1048576.0
+    let allocated_mb    = allocated_bytes / 1048576.0
+    let reserved_mb     = reserved_bytes  / 1048576.0
+
+    let result = tpt.from_list([peak_mb, allocated_mb, reserved_mb, fragmentation],
+                               dtype=f64)
+    return result
+}
+
+// ---------------------------------------------------------------------------
+// compare_gemm_sizes
+// ---------------------------------------------------------------------------
+
+@doc("Run a GEMM size sweep from min_size to max_size doubling each step.")
+@input("min_size: i64", description="Smallest M=N=K to test (e.g. 256)")
+@input("max_size: i64", description="Largest M=N=K to test (e.g. 4096)")
+@input("iters: i64", description="Timed iterations per size")
+@output("Tensor[f64, 3]", description="[small_gflops, mid_gflops, large_gflops]")
+@requires_gpu(true)
+@complexity("O(iters)")
+fn compare_gemm_sizes(min_size: i64, max_size: i64, iters: i64) -> Tensor[f64, 3] {
+    let warmup = 5
+    let mid_size = (min_size + max_size) / 2
+
+    let r_small = benchmark_gemm(min_size, min_size, min_size, warmup, iters)
+    let r_mid   = benchmark_gemm(mid_size, mid_size, mid_size, warmup, iters)
+    let r_large = benchmark_gemm(max_size, max_size, max_size, warmup, iters)
+
+    let result = tpt.from_list([r_small[4], r_mid[4], r_large[4]], dtype=f64)
+    return result
+}

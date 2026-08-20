@@ -1,0 +1,298 @@
+// distributed/fsdp_8gpu.tpts — Fully Sharded Data Parallel (FSDP) training
+//                              across 8 GPUs in TPT Script.
+//
+// FSDP shards model parameters, gradients, and optimizer states evenly
+// across all participating GPUs.  For an 8-GPU setup this gives ~8× peak
+// VRAM reduction vs single-GPU training, allowing much larger models.
+//
+// Architecture (GPT-2-style decoder):
+//   8 transformer blocks, d_model=1024, d_ff=4096, n_heads=16
+//   Sequence length 2048, micro-batch 4 per GPU → global batch 32
+//
+// FSDP execution phases per step:
+//   1. All-gather: each GPU pulls the full parameter shard from peers
+//   2. Forward pass on local micro-batch
+//   3. Backward pass on local micro-batch (gradients are local)
+//   4. Reduce-scatter: gradient fragments are scattered + summed
+//   5. Optimizer step (each GPU updates only its own parameter shard)
+//   6. Free unshard buffers to reclaim VRAM
+//
+// Annotations:
+//   @distributed_strategy("fsdp")
+//   @distributed_devices(8)
+//
+// Note: in the beta, distributed annotations are parsed and type-checked.
+//       Actual multi-GPU dispatch requires the tptr runtime (Layer 4) to
+//       be built with NCCL / RCCL support and real hardware.
+
+import tpt
+import tpt.dist
+
+// ---------------------------------------------------------------------------
+// Hyper-parameters (compile-time constants)
+// ---------------------------------------------------------------------------
+
+// World size — must match the TPTD device count at runtime.
+let WORLD_SIZE  = 8
+let D_MODEL     = 1024
+let D_FF        = 4096
+let N_HEADS     = 16
+let N_LAYERS    = 8
+let SEQ_LEN     = 2048
+let MICRO_BATCH = 4   // per-GPU batch
+let GLOBAL_BATCH = MICRO_BATCH * WORLD_SIZE
+
+// ---------------------------------------------------------------------------
+// Transformer layer weights (one layer's worth)
+// ---------------------------------------------------------------------------
+
+// All weight tensors are the full shape.  The FSDP wrapper slices each
+// tensor across its first axis before any GPU sees it.
+type AttnWeights = (Tensor[f32, *, *],  // w_q
+                    Tensor[f32, *, *],  // w_k
+                    Tensor[f32, *, *],  // w_v
+                    Tensor[f32, *, *],  // w_o
+                    Tensor[f32, *],     // ln1_g
+                    Tensor[f32, *])     // ln1_b
+
+type FfnWeights  = (Tensor[f32, *, *],  // w1
+                    Tensor[f32, *],     // b1
+                    Tensor[f32, *, *],  // w2
+                    Tensor[f32, *],     // b2
+                    Tensor[f32, *],     // ln2_g
+                    Tensor[f32, *])     // ln2_b
+
+// ---------------------------------------------------------------------------
+// Forward pass for a single transformer layer (GPU kernel)
+// ---------------------------------------------------------------------------
+
+@doc("Forward pass for one FSDP-sharded transformer layer.")
+@input("x:         Tensor[f32, *, *, *]", description="Token embeddings: [micro_batch, seq, d_model]")
+@input("attn_w:    AttnWeights",           description="Attention weights (full-rank after all-gather)")
+@input("ffn_w:     FfnWeights",            description="FFN weights (full-rank after all-gather)")
+@input("mask:      Tensor[f32, *, *]",     description="Causal mask: [seq, seq]")
+@input("n_heads:   i64",                   description="Number of attention heads")
+@output("Tensor[f32, *, *, *]", description="Output embeddings, same shape as x")
+@requires_gpu(true)
+@distributed_strategy("fsdp")
+@distributed_devices(8)
+@complexity("O(micro_batch * seq² * d_model + micro_batch * seq * d_model * d_ff)")
+fn fsdp_layer_forward(x:       Tensor[f32, *, *, *],
+                       attn_w:  AttnWeights,
+                       ffn_w:   FfnWeights,
+                       mask:    Tensor[f32, *, *],
+                       n_heads: i64) -> Tensor[f32, *, *, *] {
+    let (w_q, w_k, w_v, w_o, ln1_g, ln1_b)  = attn_w
+    let (w1, b1, w2, b2, ln2_g, ln2_b)      = ffn_w
+
+    let batch    = tpt.shape(x, dim=0)
+    let seq      = tpt.shape(x, dim=1)
+    let d_model  = tpt.shape(x, dim=2)
+    let head_dim = d_model / n_heads
+    let eps      = 1e-5
+
+    // Pre-norm 1 + multi-head attention + residual.
+    let x_flat  = tpt.reshape(x, [batch * seq, d_model])
+    let mean1   = tpt.mean(x_flat, dim=-1, keepdim=true)
+    let diff1   = tpt.sub(x_flat, mean1)
+    let var1    = tpt.mean(tpt.mul(diff1, diff1), dim=-1, keepdim=true)
+    let ln1_out = tpt.broadcast_add(
+                      tpt.broadcast_mul(
+                          tpt.div(diff1, tpt.sqrt(tpt.add_scalar(var1, eps))),
+                          ln1_g),
+                      ln1_b)
+    let ln1_3d  = tpt.reshape(ln1_out, [batch, seq, d_model])
+
+    // Project Q, K, V and split into heads.
+    let q = tpt.reshape(tpt.matmul_2d(tpt.reshape(ln1_3d, [batch*seq, d_model]), w_q),
+                         [batch, seq, n_heads, head_dim])
+    let k = tpt.reshape(tpt.matmul_2d(tpt.reshape(ln1_3d, [batch*seq, d_model]), w_k),
+                         [batch, seq, n_heads, head_dim])
+    let v = tpt.reshape(tpt.matmul_2d(tpt.reshape(ln1_3d, [batch*seq, d_model]), w_v),
+                         [batch, seq, n_heads, head_dim])
+    let q = tpt.transpose(q, dim0=1, dim1=2)
+    let k = tpt.transpose(k, dim0=1, dim1=2)
+    let v = tpt.transpose(v, dim0=1, dim1=2)
+
+    // Scaled dot-product attention.
+    let scale   = 1.0 / tpt.sqrt(tpt.cast(head_dim, dtype=f32))
+    let scores  = tpt.mul_scalar(tpt.matmul(q, tpt.transpose_last2(k)), scale)
+    let scores  = tpt.broadcast_add(scores, mask)
+    let weights = tpt.softmax(scores, dim=-1)
+    let ctx     = tpt.reshape(tpt.transpose(tpt.matmul(weights, v), dim0=1, dim1=2),
+                               [batch, seq, d_model])
+    let attn_out = tpt.matmul_2d(tpt.reshape(ctx, [batch*seq, d_model]), w_o)
+    let x        = tpt.add(x, tpt.reshape(attn_out, [batch, seq, d_model]))
+
+    // Pre-norm 2 + FFN + residual.
+    let x_flat2  = tpt.reshape(x, [batch * seq, d_model])
+    let mean2    = tpt.mean(x_flat2, dim=-1, keepdim=true)
+    let diff2    = tpt.sub(x_flat2, mean2)
+    let var2     = tpt.mean(tpt.mul(diff2, diff2), dim=-1, keepdim=true)
+    let ln2_out  = tpt.broadcast_add(
+                       tpt.broadcast_mul(
+                           tpt.div(diff2, tpt.sqrt(tpt.add_scalar(var2, eps))),
+                           ln2_g),
+                       ln2_b)
+    let h1       = tpt.broadcast_add(tpt.matmul_2d(ln2_out, tpt.transpose(w1)), b1)
+    let c1       = 0.7978845608
+    let c2       = 0.044715
+    let h1_gelu  = tpt.mul(h1, tpt.mul_scalar(
+                       tpt.add_scalar(tpt.tanh(
+                           tpt.mul_scalar(tpt.add(h1, tpt.mul_scalar(
+                               tpt.mul(tpt.mul(h1, h1), h1), c2)), c1)), 1.0), 0.5))
+    let ffn_out  = tpt.broadcast_add(tpt.matmul_2d(h1_gelu, tpt.transpose(w2)), b2)
+    let out      = tpt.add(x, tpt.reshape(ffn_out, [batch, seq, d_model]))
+    return out
+}
+
+// ---------------------------------------------------------------------------
+// FSDP training step (host — orchestrates all 8 GPUs)
+// ---------------------------------------------------------------------------
+
+@doc("One FSDP training step: all-gather → forward → backward → reduce-scatter → AdamW.")
+@input("x:         Tensor[f32, *, *, *]",  description="Global input: [global_batch, seq, d_model]")
+@input("targets:   Tensor[i64, *, *]",     description="Global targets: [global_batch, seq]")
+@input("params:    [Model]",               description="Per-layer parameter shards (length = N_LAYERS)")
+@input("moments:   [Model]",               description="Per-layer AdamW moments")
+@input("step:      i64",                   description="Global training step (1-indexed)")
+@input("lr:        f32",                   description="Learning rate")
+@input("mask:      Tensor[f32, *, *]",     description="Causal mask: [seq, seq]")
+@output("f32", description="Loss value for this step")
+@distributed_strategy("fsdp")
+@distributed_devices(8)
+@requires_gpu(false)
+fn fsdp_train_step(x:       Tensor[f32, *, *, *],
+                    targets: Tensor[i64, *, *],
+                    params:  [Model],
+                    moments: [Model],
+                    step:    i64,
+                    lr:      f32,
+                    mask:    Tensor[f32, *, *]) -> f32 {
+    // Shard the global batch across GPUs.
+    let shards_x = tpt.dist.scatter(x,       dim=0, world_size=WORLD_SIZE)
+    let shards_y = tpt.dist.scatter(targets, dim=0, world_size=WORLD_SIZE)
+
+    // Each GPU runs the full N_LAYERS forward pass on its micro-batch.
+    // tpt.dist.parallel_map runs fn on each (device, shard) pair.
+    let per_gpu_loss = tpt.dist.parallel_map(shards_x, shards_y, params, mask,
+                                              fn (x_i, y_i, params_i, mask_i) {
+        // --- Per-GPU forward pass ---
+        let h = x_i
+        let layer_idx = 0
+        for _ in 0..N_LAYERS {
+            // All-gather this layer's shards from all peers.
+            let layer_params = tpt.dist.all_gather(params_i, layer_idx)
+            let attn_w = tpt.model_attn_weights(layer_params)
+            let ffn_w  = tpt.model_ffn_weights(layer_params)
+            let h = fsdp_layer_forward(h, attn_w, ffn_w, mask_i, N_HEADS)
+            let layer_idx = layer_idx + 1
+
+            // Free the all-gathered buffer to reclaim VRAM.
+            tpt.dist.free_unshard(layer_params)
+        }
+
+        // Language modelling loss: cross-entropy over the vocab.
+        let logits = tpt.lm_head(h)
+        let loss   = tpt.cross_entropy_2d(logits, y_i)
+
+        // Backward pass — computes gradients wrt all parameters.
+        let grads = tpt.backward(loss, tpt.model_params(params_i))
+        return (loss, grads)
+    })
+
+    // Collect scalar losses from each GPU.
+    let losses = tpt.dist.gather_scalar(per_gpu_loss, field=0)
+    let mean_loss = tpt.mean(losses)
+
+    // Reduce-scatter gradients: each GPU gets its own fragment of the
+    // summed gradient tensor.
+    let grad_shards = tpt.dist.gather_grads(per_gpu_loss, field=1)
+    let reduced_grads = tpt.dist.reduce_scatter(grad_shards, op="mean",
+                                                 world_size=WORLD_SIZE)
+
+    // Each GPU updates only its own parameter shard.
+    tpt.dist.parallel_adamw(params, moments, reduced_grads, step,
+                             lr, beta1=0.9, beta2=0.999, eps=1e-8, wd=0.1)
+
+    tpt.dist.barrier()
+    return mean_loss
+}
+
+// ---------------------------------------------------------------------------
+// Full FSDP training run (host entry point)
+// ---------------------------------------------------------------------------
+
+@doc("Initialise FSDP context and run the training loop for N epochs.")
+@input("train_data:  DataLoader", description="Training data (pre-tokenised)")
+@input("n_epochs:    i64",        description="Number of training epochs")
+@input("lr:          f32",        description="Peak learning rate (after warm-up)")
+@input("warmup_steps: i64",       description="Linear LR warm-up steps")
+@input("ckpt_dir:    [u8]",       description="Checkpoint directory")
+@output("bool", description="true on successful completion")
+@distributed_strategy("fsdp")
+@distributed_devices(8)
+@requires_gpu(false)
+fn run_fsdp_training(train_data:   DataLoader,
+                      n_epochs:     i64,
+                      lr:           f32,
+                      warmup_steps: i64,
+                      ckpt_dir:     [u8]) -> bool {
+    // Initialise the distributed process group (NCCL / RCCL backend).
+    tpt.dist.init(strategy="fsdp", world_size=WORLD_SIZE)
+
+    // Allocate model weights on CPU first, then scatter shards to GPUs.
+    let params  = tpt.dist.init_model_shards(
+        n_layers=N_LAYERS, d_model=D_MODEL, d_ff=D_FF,
+        n_heads=N_HEADS, world_size=WORLD_SIZE)
+
+    let moments = tpt.dist.init_moments(params)
+
+    // Causal mask: lower-triangular, −inf above diagonal.
+    let mask = tpt.causal_mask([SEQ_LEN, SEQ_LEN], dtype=f32)
+
+    let step = 0
+
+    for epoch in 0..n_epochs {
+        let epoch_loss    = 0.0
+        let n_steps_epoch = 0
+
+        for batch in train_data {
+            let step = step + 1
+
+            // Cosine LR schedule with linear warm-up.
+            let step_f = tpt.cast(step, dtype=f32)
+            let wu_f   = tpt.cast(warmup_steps, dtype=f32)
+            let cur_lr = if step <= warmup_steps {
+                lr * step_f / wu_f
+            } else {
+                lr * 0.5 * (1.0 + tpt.cos(3.14159265 * (step_f - wu_f) / wu_f))
+            }
+
+            let x       = tpt.batch_x(batch)
+            let targets = tpt.batch_y(batch)
+
+            let loss = fsdp_train_step(x, targets, params, moments, step, cur_lr, mask)
+
+            let epoch_loss    = epoch_loss + loss
+            let n_steps_epoch = n_steps_epoch + 1
+
+            // Log every 100 steps.
+            let do_log = step % 100 == 0
+            if do_log {
+                let avg_loss = epoch_loss / tpt.cast(n_steps_epoch, dtype=f32)
+                tpt.print(tpt.format("step={} epoch={} loss={:.4f} lr={:.6f}",
+                                      step, epoch, avg_loss, cur_lr))
+            }
+        }
+
+        // Checkpoint at end of each epoch (rank-0 gathers all shards).
+        let full_model = tpt.dist.gather_model(params, root_rank=0)
+        let path = tpt.path_join(ckpt_dir, tpt.format("epoch_{}.tptc", epoch))
+        tpt.save_checkpoint(full_model, path)
+        tpt.dist.barrier()
+    }
+
+    tpt.dist.shutdown()
+    return true
+}

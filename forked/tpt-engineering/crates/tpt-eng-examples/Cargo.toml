@@ -1,0 +1,40 @@
+[package]
+name = "tpt-eng-examples"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+description = "Cross-crate integration scenarios composing the tpt-eng-* engineering primitives"
+readme = "README.md"
+keywords = ["engineering", "examples", "integration"]
+categories = ["science"]
+repository = "https://github.com/tpt-solutions/tpt-engineering"
+homepage = "https://github.com/tpt-solutions/tpt-engineering"
+
+[dependencies]
+tpt-eng-geo-topology = { path = "../tpt-eng-geo-topology", version = "0.1.0" }
+tpt-eng-network-matrix = { path = "../tpt-eng-network-matrix", version = "0.1.0" }
+tpt-eng-controls = { path = "../tpt-eng-controls", version = "0.1.0" }
+tpt-eng-electrical = { path = "../tpt-eng-electrical", version = "0.1.0" }
+tpt-eng-renewables = { path = "../tpt-eng-renewables", version = "0.1.0" }
+tpt-eng-props-fuels = { path = "../tpt-eng-props-fuels", version = "0.1.0" }
+tpt-eng-timeseries-core = { path = "../tpt-eng-timeseries-core", version = "0.1.0" }
+tpt-eng-timeseries-align = { path = "../tpt-eng-timeseries-align", version = "0.1.0" }
+tpt-eng-timeseries-gap = { path = "../tpt-eng-timeseries-gap", version = "0.1.0" }
+tpt-eng-structural = { path = "../tpt-eng-structural", version = "0.1.0" }
+tpt-eng-sections = { path = "../tpt-eng-sections", version = "0.1.0" }
+tpt-eng-materials = { path = "../tpt-eng-materials", version = "0.1.0" }
+tpt-eng-tolerance = { path = "../tpt-eng-tolerance", version = "0.1.0" }
+tpt-eng-gdt = { path = "../tpt-eng-gdt", version = "0.1.0" }
+tpt-eng-geometry = { path = "../tpt-eng-geometry", version = "0.1.0" }
+tpt-eng-report = { path = "../tpt-eng-report", version = "0.1.0" }
+tpt-math-units = { version = "0.1.0" }
+
+[features]
+default = ["std"]
+std = ["tpt-math-units/std"]
+alloc = ["tpt-math-units/alloc"]
+
+[lints]
+rust = { unsafe_op_in_unsafe_fn = "warn", unsafe_code = "forbid" }
+clippy = { all = "warn", missing_errors_doc = "warn", missing_panics_doc = "warn" }

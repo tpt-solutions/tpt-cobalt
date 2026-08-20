@@ -1,0 +1,35 @@
+[package]
+name = "tpt-math-linalg-dense"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.84"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+description = "In-house dense linear algebra (DVector/DMatrix, column-major Vec storage). Storage backend for tpt-math-linalg/optimize; no external linalg dependency."
+readme = "README.md"
+repository = "https://github.com/tpt-solutions/tpt-math"
+homepage = "https://github.com/tpt-solutions/tpt-math"
+documentation = "https://docs.rs/tpt-math-linalg-dense"
+keywords = ["linear-algebra", "matrix", "vector", "no-std"]
+categories = ["mathematics", "science", "algorithms", "no-std"]
+
+[dependencies]
+tpt-math-numeric = { path = "../tpt-math-numeric", version = "0.1.0", default-features = false }
+
+[features]
+default = ["std"]
+# `std` pulls in the allocator (dynamic vectors need a heap).
+std = ["tpt-math-numeric/std", "alloc"]
+# Dynamic vectors/matrices always need an allocator.
+alloc = ["tpt-math-numeric/alloc"]
+
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "linalg_dense_bench"
+harness = false
+
+[lints]
+rust = { unsafe_op_in_unsafe_fn = "warn", unsafe_code = "forbid" }
+clippy = { all = "warn" }

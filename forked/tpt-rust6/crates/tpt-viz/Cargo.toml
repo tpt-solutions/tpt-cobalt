@@ -1,0 +1,32 @@
+[package]
+name = "tpt-viz"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.81"
+license = "MIT OR Apache-2.0"
+description = "Declarative grammar-of-graphics plotting with software SVG rendering and automatic level-of-detail"
+
+[dependencies]
+# Optional: native tpt-omni (Arrow/Rayon) integration. Left out of `default`
+# so the core plotting + SVG pipeline stays dependency-free and wasm-clean.
+tpt-omni = { path = "../tpt-omni", optional = true }
+# WebGPU backend (feature `gpu`). Off by default so the core build stays
+# dependency-free and wasm-clean.
+wgpu = { version = "0.20", optional = true }
+pollster = { version = "0.3", optional = true }
+bytemuck = { version = "1", features = ["derive"], optional = true }
+
+# Enables the `omni` feature for `cargo test -p tpt-viz` only (dev builds);
+# `cargo build -p tpt-viz` stays dependency-free.
+[dev-dependencies]
+tpt-viz = { path = ".", features = ["omni"] }
+tpt-omni = { path = "../tpt-omni" }
+arrow = { version = "54" }
+
+[features]
+default = []
+# Tensor / OmniFrame / Table adapters.
+omni = ["dep:tpt-omni"]
+# GPU-accelerated rendering via WebGPU (wgpu): instanced point-sprite scatter
+# drawn entirely on the GPU (see `src/gpu.rs`).
+gpu = ["dep:wgpu", "dep:pollster", "dep:bytemuck"]

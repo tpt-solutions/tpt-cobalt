@@ -1,0 +1,130 @@
+DESIGN DOCUMENT: tpt-engineering (ENGINEERING FOUNDATION)
+
+BEFORE YOU WRITE ANYTHING BELOW: check tpt-rust-map/registry.toml (in the
+sibling tpt-rust-map repo) for an existing foundation or external crate
+before adding a new one here. Every crate name in this repo carries the
+tpt-eng- prefix. A crate is only a valid wrap target if its CURRENT
+license is MIT OR Apache-2.0 (or more permissive) — Apache-2.0-ONLY is
+always disqualifying, no exceptions (see tpt-rust-map/docs/adr/0007). If
+it passes that check, default to wrapping; reimplementation still needs
+one written reason. Prefer many small crates + a thin umbrella crate over
+one broad crate. Every crate: license = "MIT OR Apache-2.0".
+
+PROJECT OVERVIEW
+tpt-engineering provides applied engineering primitives shared across
+tpt-solutions' physical-systems verticals: fluid/gas property tables,
+timeseries alignment for irregular sensor streams, infrastructure
+topology, and control systems. It consolidates work already partially
+built — and already correctly scoped as reusable primitives — in
+tpt-rust2 (tpt-props-water/air/fuels, tpt-timeseries-core/align/gap,
+tpt-geo-asset/topology, tpt-network-matrix), giving those crates a
+dedicated repo and the tpt-eng- naming convention instead of living inside
+a single narrowly-named product repo.
+
+ECOSYSTEM GAP JUSTIFICATION
+- Fluid/gas property tables (IAPWS-IF97 water/steam, ASHRAE psychrometrics,
+  fuel properties): no dominant pure-Rust crate covers these — a genuine,
+  narrow gap, already correctly identified and partially built in
+  tpt-rust2.
+- Runtime unit registries for dynamic payloads: this need lives in
+  tpt-math (tpt-math-units-dyn), not here — tpt-engineering crates depend
+  on tpt-math's units types rather than re-deriving them.
+- Control systems (PID/state-space/transfer functions): no dominant Rust
+  crate exists — a genuine gap. Audit tpt-flight-control/tpt-chassis/
+  tpt-dynamo/tpt-servo before writing tpt-eng-controls; those verticals may
+  have already built (and possibly duplicated) this independently.
+- Orbital mechanics/coordinate frames deliberately do NOT live here — see
+  tpt-science's tpt-sci-astro. That's astrodynamics/physics, not applied
+  engineering, even though it's tempting to lump "spatial" primitives
+  together.
+
+CORE PRINCIPLES
+Consolidate what already exists in tpt-rust2 into this dedicated repo
+rather than rebuild it — the crates below are largely already-correct
+designs that just need the tpt-eng- prefix and a home outside a single
+product repo. Many small crates, dual-licensed MIT OR Apache-2.0, most
+no_std-capable (these are the kind of primitives edge/embedded telemetry
+processing needs).
+
+CRATE INVENTORY
+
+  tpt-eng-props-water
+    Build: IAPWS-IF97 water/steam property tables. no_std. Consolidates
+    tpt-rust2's tpt-props-water. Depends on: tpt-math-units.
+
+  tpt-eng-props-air
+    Build: ASHRAE psychrometrics / moist-air properties. no_std.
+    Consolidates tpt-rust2's tpt-props-air. Depends on: tpt-math-units.
+
+  tpt-eng-props-fuels
+    Build: heating values, density, combustion properties for natural gas,
+    hydrogen blends, diesel. no_std. Consolidates tpt-rust2's
+    tpt-props-fuels. Depends on: tpt-math-units.
+
+  tpt-eng-props (umbrella)
+    Re-exports water + air + fuels.
+
+  tpt-eng-timeseries-core
+    Build: timeseries core types. Consolidates tpt-rust2's
+    tpt-timeseries-core. Depends on: tpt-math-numeric.
+
+  tpt-eng-timeseries-align
+    Build: algorithms for aligning irregular, multi-rate sensor streams
+    (e.g. 1Hz CAN vs 10s Modbus) onto a unified, deterministic time grid.
+    Consolidates tpt-rust2's tpt-timeseries-align. Depends on:
+    tpt-eng-timeseries-core.
+
+  tpt-eng-timeseries-gap
+    Build: staleness detection, freeze detection, interpolation strategies
+    for sensor dropouts/communication timeouts. Consolidates tpt-rust2's
+    tpt-timeseries-gap. Depends on: tpt-eng-timeseries-core.
+
+  tpt-eng-timeseries (umbrella)
+    Re-exports core + align + gap.
+
+  tpt-eng-geo-asset
+    Build: asset registry mapping physical geographic coordinates to
+    logical device IDs and network nodes. Consolidates tpt-rust2's
+    tpt-geo-asset.
+
+  tpt-eng-geo-topology
+    Build: graph structures for spatial infrastructure (pipes/wires/
+    ducts), with upstream/downstream traversal and flow-direction logic.
+    Consolidates tpt-rust2's tpt-geo-topology. Depends on:
+    tpt-eng-geo-asset.
+
+  tpt-eng-network-matrix
+    Build: automated generation of incidence/admittance matrices from
+    physical topology graphs, preparing the math for downstream hydraulic
+    or electrical solvers. Consolidates tpt-rust2's tpt-network-matrix.
+    Depends on: tpt-math-linalg, tpt-eng-geo-topology.
+
+  tpt-eng-controls
+    Build: PID/state-space/transfer-function primitives. One crate for v1
+    — no audit evidence yet of a needed split; revisit if it grows.
+    Genuine ecosystem gap (no dominant Rust crate exists). AUDIT
+    tpt-flight-control/tpt-chassis/tpt-dynamo/tpt-servo before writing
+    anything. Depends on: tpt-math-linalg.
+
+POST-PHASE-0 ADDITIONS
+The crate inventory above reflects only the original Phase 0 scope (14
+crates). The workspace has since grown to 29 crates as structural/
+mechanical and geometry/CAD domains were added: tpt-eng-materials,
+tpt-eng-sections, tpt-eng-standards, tpt-eng-tolerance, tpt-eng-gdt,
+tpt-eng-reliability, tpt-eng-safety (structural/mechanical); tpt-eng-
+geometry, tpt-eng-nurbs, tpt-eng-mesh, tpt-eng-cad, tpt-eng-io (geometry/
+CAD); tpt-eng-plot, tpt-eng-report (output); tpt-eng-cli, tpt-eng-examples
+(integration). See README.md's crate inventory table for the authoritative,
+up-to-date list and per-crate descriptions; this file is retained as the
+Phase 0 design record and is not kept in lockstep with later additions.
+
+OUT OF SCOPE / EXPLICITLY EXCLUDED
+tpt-tup-schema stays where it is (tpt-rust2 or wherever it currently lives)
+— protocol-specific plumbing tied to the TUP envelope format, not a
+generic engineering primitive, does not belong in tpt-engineering. Orbital
+mechanics/coordinate frames live in tpt-science's tpt-sci-astro instead.
+
+REPO CONVENTIONS
+Cargo workspace under crates/, one crate per directory, seeded from
+tpt-rust-map/template/. Every crate registered in tpt-rust-map/registry.toml
+before implementation starts.

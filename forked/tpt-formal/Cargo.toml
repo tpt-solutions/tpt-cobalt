@@ -1,0 +1,73 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/tpt-for-abstract-interp",
+    "crates/tpt-for-assert-const",
+    "crates/tpt-for-contract",
+    "crates/tpt-for-det-proptest",
+    "crates/tpt-for-deterministic-sim",
+    "crates/tpt-for-model-check",
+    "crates/tpt-for-proof-ast",
+    "crates/tpt-for-redundancy",
+    "crates/tpt-for-refinement",
+    "crates/tpt-for-runtime-verify",
+    "crates/tpt-for-sat",
+    "crates/tpt-for-smt-lite",
+    "crates/tpt-for-symbolic-exec",
+    "crates/tpt-for-trace-macros",
+    "crates/tpt-for-typestate",
+    "crates/tpt-for-vcgen",
+    "crates/tpt-for-verified-algorithms",
+    "crates/tpt-for-verified-ode",
+    "crates/tpt-for-witness",
+]
+exclude = []
+
+[workspace.package]
+description = "tpt-formal — formal-verification & design-by-contract foundation for TPT Solutions"
+authors = ["TPT Solutions"]
+edition = "2021"
+rust-version = "1.75"
+license = "MIT OR Apache-2.0"
+homepage = "https://github.com/tpt-solutions/tpt-formal"
+repository = "https://github.com/tpt-solutions/tpt-formal"
+
+[workspace.dependencies]
+tpt-for-typestate = { version = "0.1.0", path = "crates/tpt-for-typestate" }
+tpt-for-assert-const = { version = "0.1.0", path = "crates/tpt-for-assert-const" }
+tpt-for-contract = { version = "0.1.0", path = "crates/tpt-for-contract" }
+tpt-for-witness = { version = "0.1.0", path = "crates/tpt-for-witness" }
+tpt-for-refinement = { version = "0.1.0", path = "crates/tpt-for-refinement" }
+tpt-for-verified-algorithms = { version = "0.1.0", path = "crates/tpt-for-verified-algorithms" }
+tpt-for-verified-ode = { version = "0.1.0", path = "crates/tpt-for-verified-ode" }
+tpt-for-smt-lite = { version = "0.1.0", path = "crates/tpt-for-smt-lite" }
+tpt-for-proof-ast = { version = "0.1.0", path = "crates/tpt-for-proof-ast" }
+tpt-for-det-proptest = { version = "0.1.0", path = "crates/tpt-for-det-proptest" }
+tpt-for-deterministic-sim = { version = "0.1.0", path = "crates/tpt-for-deterministic-sim" }
+tpt-for-redundancy = { version = "0.1.0", path = "crates/tpt-for-redundancy" }
+tpt-for-trace-macros = { version = "0.1.0", path = "crates/tpt-for-trace-macros" }
+tpt-for-model-check = { version = "0.1.0", path = "crates/tpt-for-model-check" }
+tpt-for-sat = { version = "0.1.0", path = "crates/tpt-for-sat" }
+tpt-for-vcgen = { version = "0.1.0", path = "crates/tpt-for-vcgen" }
+tpt-for-abstract-interp = { version = "0.1.0", path = "crates/tpt-for-abstract-interp" }
+tpt-for-symbolic-exec = { version = "0.1.0", path = "crates/tpt-for-symbolic-exec" }
+tpt-for-runtime-verify = { version = "0.1.0", path = "crates/tpt-for-runtime-verify" }
+
+# High-performance ODE backend (from the `tpt-science` pillar), wired into
+# `tpt-for-verified-ode`'s `backend-sci-ode` feature. Pulled from git because it
+# is not published to crates.io (`publish = false`); it resolves its own
+# `tpt-math-numeric`/`thiserror`/cranelift deps from crates.io.
+tpt-sci-ode = { git = "https://github.com/tpt-solutions/tpt-science", branch = "master", package = "tpt-sci-ode" }
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "warn"
+
+[workspace.lints.clippy]
+all = "warn"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+strip = "symbols"
+overflow-checks = true

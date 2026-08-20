@@ -1,0 +1,25 @@
+[package]
+name = "tpt-gpu-shared"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0 WITH LLVM-exception"
+authors = ["TPT Solutions"]
+repository = "https://github.com/tpt-solutions/tpt-gpu"
+description = "Shared AI provider abstraction for TPT GPU tools"
+documentation = "https://docs.rs/tpt-gpu-shared"
+readme = "README.md"
+keywords = ["gpu", "ai", "llm", "compiler", "tooling"]
+categories = ["development-tools", "artificial-intelligence"]
+
+[lib]
+name = "tpt_gpu_shared"
+path = "src/lib.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { version = "2" }
+ureq = { version = "3", features = ["json"] }
+
+[dev-dependencies]
+env_logger = "0.11"

@@ -1,0 +1,216 @@
+// tpt/init.tpts — TPT Script Standard Library: Weight Initialisation
+//
+// Provides standard neural-network weight initialisers.  All functions
+// return freshly allocated tensors; none modify parameters in-place.
+//
+// Usage: import tpt.init
+
+import tpt
+
+// ---------------------------------------------------------------------------
+// Uniform / Normal primitives
+// ---------------------------------------------------------------------------
+
+@doc("Uniform initialisation: U(a, b) — fill a tensor with uniform random values in [a, b).")
+@input("shape: [i64, ...]", description="Shape of the output tensor")
+@input("a:     f32",        description="Lower bound (default 0.0)")
+@input("b:     f32",        description="Upper bound (default 1.0)")
+@input("dtype: dtype",      description="Element dtype (default f32)")
+@output("Tensor[dtype, ...]", description="Uniformly-initialised tensor")
+@requires_gpu(false)
+@differentiable(false)
+@complexity("O(n)")
+fn uniform(shape: [i64, ...], a: f32, b: f32, dtype: dtype) -> Tensor[f32, *, *] {
+    let t   = tpt.random(shape, dtype=dtype)
+    let out = tpt.add_scalar(tpt.mul_scalar(t, b - a), a)
+    return out
+}
+
+@doc("Normal initialisation: N(mean, std²) — fill a tensor with Gaussian random values.")
+@input("shape: [i64, ...]", description="Shape of the output tensor")
+@input("mean:  f32",        description="Distribution mean (default 0.0)")
+@input("std:   f32",        description="Standard deviation (default 1.0)")
+@input("dtype: dtype",      description="Element dtype (default f32)")
+@output("Tensor[dtype, ...]", description="Normally-distributed tensor")
+@requires_gpu(false)
+@differentiable(false)
+@complexity("O(n)")
+fn normal(shape: [i64, ...], mean: f32, std: f32, dtype: dtype) -> Tensor[f32, *, *] {
+    let t   = tpt.randn(shape, dtype=dtype)
+    let out = tpt.add_scalar(tpt.mul_scalar(t, std), mean)
+    return out
+}
+
+// ---------------------------------------------------------------------------
+// Constant fill
+// ---------------------------------------------------------------------------
+
+@doc("Constant initialisation: fill every element with a scalar value.")
+@input("shape: [i64, ...]", description="Shape of the output tensor")
+@input("value: f32",        description="Fill value")
+@input("dtype: dtype",      description="Element dtype (default f32)")
+@output("Tensor[dtype, ...]", description="Constant tensor")
+@requires_gpu(false)
+@differentiable(false)
+@complexity("O(n)")
+fn constant(shape: [i64, ...], value: f32, dtype: dtype) -> Tensor[f32, *, *] {
+    let out = tpt.full(shape, value, dtype=dtype)
+    return out
+}
+
+@doc("Zeros initialisation — shorthand for tpt.zeros (provided for API symmetry with init module).")
+@input("shape: [i64, ...]", description="Shape of the output tensor")
+@input("dtype: dtype",      description="Element dtype (default f32)")
+@output("Tensor[dtype, ...]", description="Zero-filled tensor")
+@requires_gpu(false)
+@differentiable(false)
+@complexity("O(n)")
+fn zeros(shape: [i64, ...], dtype: dtype) -> Tensor[f32, *, *] {
+    let out = tpt.zeros(shape, dtype=dtype)
+    return out
+}
+
+@doc("Ones initialisation — shorthand for tpt.ones (provided for API symmetry).")
+@input("shape: [i64, ...]", description="Shape of the output tensor")
+@input("dtype: dtype",      description="Element dtype (default f32)")
+@output("Tensor[dtype, ...]", description="Ones-filled tensor")
+@requires_gpu(false)
+@differentiable(false)
+@complexity("O(n)")
+fn ones(shape: [i64, ...], dtype: dtype) -> Tensor[f32, *, *] {
+    let out = tpt.ones(shape, dtype=dtype)
+    return out
+}
+
+// ---------------------------------------------------------------------------
+// Xavier / Glorot initialisers
+// ---------------------------------------------------------------------------
+
+@doc("Xavier uniform initialisation: U(-a, a) where a = gain * sqrt(6 / (fan_in + fan_out)). Keeps activation variance stable through layers with symmetric activations (tanh, sigmoid).")
+@input("shape:    [i64, ...]", description="Parameter shape; last two dims are [fan_out, fan_in]")
+@input("gain:     f32",        description="Scaling factor (default 1.0; use sqrt(2) for ReLU)")
+@input("dtype:    dtype",      description="Element dtype (default f32)")
+@output("Tensor[dtype, ...]", description="Xavier-uniform initialised parameter")
+@requires_gpu(false)
+@differentiable(false)
+@complexity("O(n)")
+fn xavier_uniform(shape: [i64, ...], gain: f32, dtype: dtype) -> Tensor[f32, *, *] {
+    let out = tpt.xavier_uniform(shape, gain=gain, dtype=dtype)
+    return out
+}
+
+@doc("Xavier normal initialisation: N(0, std²) where std = gain * sqrt(2 / (fan_in + fan_out)). Same motivation as xavier_uniform but draws from a Gaussian distribution.")
+@input("shape: [i64, ...]", description="Parameter shape; last two dims are [fan_out, fan_in]")
+@input("gain:  f32",        description="Scaling factor (default 1.0)")
+@input("dtype: dtype",      description="Element dtype (default f32)")
+@output("Tensor[dtype, ...]", description="Xavier-normal initialised parameter")
+@requires_gpu(false)
+@differentiable(false)
+@complexity("O(n)")
+fn xavier_normal(shape: [i64, ...], gain: f32, dtype: dtype) -> Tensor[f32, *, *] {
+    let out = tpt.xavier_normal(shape, gain=gain, dtype=dtype)
+    return out
+}
+
+// ---------------------------------------------------------------------------
+// Kaiming / He initialisers
+// ---------------------------------------------------------------------------
+
+@doc("Kaiming uniform initialisation (He et al. 2015): U(-bound, bound) where bound = sqrt(6 / fan). Designed for layers followed by ReLU/ELU/SELU activations.")
+@input("shape: [i64, ...]", description="Parameter shape; [out_features, in_features, ...]")
+@input("a:     f32",        description="Negative slope for leaky_relu (default 0 → standard relu)")
+@input("mode:  [u8]",       description="\"fan_in\" preserves forward variance; \"fan_out\" preserves backward (default \"fan_in\")")
+@input("dtype: dtype",      description="Element dtype (default f32)")
+@output("Tensor[dtype, ...]", description="Kaiming-uniform initialised parameter")
+@requires_gpu(false)
+@differentiable(false)
+@complexity("O(n)")
+fn kaiming_uniform(shape: [i64, ...], a: f32, mode: [u8], dtype: dtype) -> Tensor[f32, *, *] {
+    let out = tpt.kaiming_uniform(shape, a=a, mode=mode, dtype=dtype)
+    return out
+}
+
+@doc("Kaiming normal initialisation (He et al. 2015): N(0, std²) where std = sqrt(2 / fan). Preferred over uniform for very deep networks.")
+@input("shape: [i64, ...]", description="Parameter shape; [out_features, in_features, ...]")
+@input("a:     f32",        description="Negative slope for leaky_relu (default 0)")
+@input("mode:  [u8]",       description="\"fan_in\" or \"fan_out\" (default \"fan_in\")")
+@input("dtype: dtype",      description="Element dtype (default f32)")
+@output("Tensor[dtype, ...]", description="Kaiming-normal initialised parameter")
+@requires_gpu(false)
+@differentiable(false)
+@complexity("O(n)")
+fn kaiming_normal(shape: [i64, ...], a: f32, mode: [u8], dtype: dtype) -> Tensor[f32, *, *] {
+    let out = tpt.kaiming_normal(shape, a=a, mode=mode, dtype=dtype)
+    return out
+}
+
+// ---------------------------------------------------------------------------
+// Truncated normal
+// ---------------------------------------------------------------------------
+
+@doc("Truncated normal initialisation: N(mean, std) with values outside [a, b] resampled. Commonly used in ViT / BERT to avoid extreme initialisations.")
+@input("shape: [i64, ...]", description="Parameter shape")
+@input("mean:  f32",        description="Distribution mean (default 0.0)")
+@input("std:   f32",        description="Standard deviation (default 0.02 — BERT default)")
+@input("a:     f32",        description="Lower truncation bound (default -2.0)")
+@input("b:     f32",        description="Upper truncation bound (default 2.0)")
+@input("dtype: dtype",      description="Element dtype (default f32)")
+@output("Tensor[dtype, ...]", description="Truncated-normal initialised parameter")
+@requires_gpu(false)
+@differentiable(false)
+@complexity("O(n)")
+fn trunc_normal(shape: [i64, ...], mean: f32, std: f32, a: f32, b: f32, dtype: dtype) -> Tensor[f32, *, *] {
+    let out = tpt.trunc_normal(shape, mean=mean, std=std, a=a, b=b)
+    let out = tpt.cast(out, dtype=dtype)
+    return out
+}
+
+// ---------------------------------------------------------------------------
+// Orthogonal initialisation
+// ---------------------------------------------------------------------------
+
+@doc("Orthogonal initialisation via QR decomposition. Good for RNNs and very deep networks where gradient flow stability is critical.")
+@input("shape: [i64, ...]", description="Parameter shape (must have rank ≥ 2; rows ≥ cols recommended)")
+@input("gain:  f32",        description="Scaling factor (default 1.0)")
+@input("dtype: dtype",      description="Element dtype (default f32)")
+@output("Tensor[dtype, ...]", description="Semi-orthogonal initialised parameter")
+@requires_gpu(false)
+@differentiable(false)
+@complexity("O(min(m,n) * m * n)")
+fn orthogonal(shape: [i64, ...], gain: f32, dtype: dtype) -> Tensor[f32, *, *] {
+    let out = tpt.orthogonal(shape, gain=gain)
+    let out = tpt.cast(out, dtype=dtype)
+    return out
+}
+
+// ---------------------------------------------------------------------------
+// Convenience: default linear-layer init (Kaiming uniform + zeros bias)
+// ---------------------------------------------------------------------------
+
+@doc("Initialise a linear layer following PyTorch defaults: Kaiming-uniform weight + zero bias.")
+@input("in_features:  i64", description="Input dimension")
+@input("out_features: i64", description="Output dimension")
+@input("dtype:        dtype", description="Element dtype (default f32)")
+@output("(Tensor[dtype, out_features, in_features], Tensor[dtype, out_features])", description="Tuple (weight, bias)")
+@requires_gpu(false)
+@differentiable(false)
+@complexity("O(in_features * out_features)")
+fn linear_params(in_features: i64, out_features: i64, dtype: dtype) -> (Tensor[f32, *, *], Tensor[f32, *]) {
+    let weight = kaiming_uniform([out_features, in_features], a=0.0, mode="fan_in", dtype=dtype)
+    let bias   = tpt.zeros([out_features], dtype=dtype)
+    return (weight, bias)
+}
+
+@doc("Initialise an embedding table with a normal distribution (std = 1 / sqrt(embed_dim)).")
+@input("vocab_size: i64", description="Number of vocabulary entries")
+@input("embed_dim:  i64", description="Embedding dimension")
+@input("dtype:      dtype", description="Element dtype (default f32)")
+@output("Tensor[dtype, vocab_size, embed_dim]", description="Embedding table")
+@requires_gpu(false)
+@differentiable(false)
+@complexity("O(vocab_size * embed_dim)")
+fn embedding_params(vocab_size: i64, embed_dim: i64, dtype: dtype) -> Tensor[f32, *, *] {
+    let std    = 1.0 / tpt.sqrt(tpt.cast(embed_dim, dtype=f32))
+    let weight = normal([vocab_size, embed_dim], mean=0.0, std=std, dtype=dtype)
+    return weight
+}

@@ -1,0 +1,23 @@
+[package]
+name = "tpt-for-model-check"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+description = "Explicit-state model checking (clean-room)."
+
+readme = "README.md"
+keywords = ["model-checking", "verification", "formal-methods", "state-exploration", "temporal-logic"]
+categories = ["science", "mathematics", "algorithms"]
+
+[dependencies]
+
+[lints]
+rust = { unsafe_op_in_unsafe_fn = "warn" }
+clippy = { all = "warn" }
+
+[[example]]
+name = "model_check_basic"
+path = "examples/counter_safety.rs"
+

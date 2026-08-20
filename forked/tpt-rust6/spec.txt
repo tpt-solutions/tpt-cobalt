@@ -1,0 +1,667 @@
+Design Document: tpt-rust6 (The Rust-Native Scientific Stack)
+Repository Name: tpt-rust6
+Project Name: TPT (The Python Transition)
+Version: 2.1
+Date: August 2026
+Mission: To leapfrog the Python ecosystem by building a purely native, Rust-first scientific computing, mathematics, and AI stack. We do not wrap Python. We do not replicate Python. We exploit Rust's unique superpowers (Wasm, fearless concurrency, zero-cost abstractions, compile-time codegen) to make Python's architectural flaws obsolete.
+
+> **Note (2026-08-07, refreshed 2026-08-07):** The API sketches in this document are *aspirational / historical* design intent, not the shipped API. The authoritative, implemented signatures live in each crate's `src/` and generated Rust docs (`cargo doc`). Where a sketch disagrees with the code (e.g. `.as_tensor::<f32, 3>()` vs. the actual `as_tensor::<f64>(name, &shape)`), the implementation is correct and this document is stale. See `TODO.md` for the current state of each crate.
+>
+> **Implemented-signature appendix (see §13):** a non-exhaustive list of shipped signatures, kept in sync with the crates, so the most common call sites no longer have to be mentally translated from the sketches above.
+
+1. Core Philosophy
+Principle
+Meaning
+Leapfrog, don't replicate
+Every crate must do something Python fundamentically cannot.
+Zero-copy everywhere
+Data is loaded once into Arrow memory and viewed as tables, tensors, or arrays without copying.
+Compile-time over runtime
+Gradients, DAGs, and type checks are resolved at compile time, not runtime.
+No external servers
+Dashboards run in-browser via Wasm. Pipelines run as single binaries.
+Unified memory model
+One data format (Arrow) underpins tables, tensors, and sparse structures.
+Scripting-first DX
+High-level abstractions hide Rust's complexity for rapid exploration.
+Typesetting as code
+Documents are compiled, type-checked programs, not fragile text files.
+2. The 12 Crates
+1. tpt-omni — The Unified Arrow-Native Data Engine
+The end of the Pandas / NumPy / PyTorch fragmentation.
+The Python Flaw: Moving data between Pandas (tables), NumPy (arrays), and PyTorch (tensors) requires expensive memory copies and format conversions. Three libraries, three memory layouts, three APIs.
+The Rust Superpower: Apache Arrow's columnar memory format + zero-cost type punning.
+Core Features:
+A single OmniFrame type backed by Arrow that natively represents 1D arrays, 2D tables, N-D tensors, and sparse matrices in the same memory layout.
+Zero-copy "view" conversions: .as_table(), .as_tensor::<f64>(name, &shape), .as_sparse().
+Implicit, automatic broadcasting on arithmetic operations (no manual .broadcast_to()).
+Python-like slicing via a slice![] macro: slice![data, 0..5, All, 2].
+Out-of-core processing: memory-map files larger than RAM transparently.
+Automatic parallelism via Rayon on all element-wise and reduction operations.
+API Sketch:
+
+use tpt_omni::prelude::*;
+
+// Load once into Arrow memory
+let data = OmniFrame::read_parquet("experiment.parquet")?;
+
+// View as a table, filter with Pandas-like ergonomics
+let table = data.as_table();
+let adults = table.filter(col("age").gt(18));
+
+// View the EXACT SAME MEMORY as a tensor. Zero copy.
+let tensor = data.as_tensor::<f64>("feature", &[n_rows]).unwrap();
+let normalized = (tensor - tensor.mean()) / tensor.std();
+
+// Slice like NumPy
+let subset = slice![normalized, 0..10, All, 2];
+
+Underlying Engines: arrow-rs, polars-core (columnar ops), ndarray (view compat).
+2. tpt-grad — Compile-Time Autograd
+Automatic differentiation with zero runtime overhead.
+The Python Flaw: PyTorch builds compute graphs at runtime (slow, memory-heavy). JAX traces and compiles via XLA (heavy dependency, opaque errors).
+The Rust Superpower: Procedural macros that parse and differentiate your function's AST at compile time, emitting hand-optimized gradient code.
+Core Features:
+#[derive_grad]: Parses the function body, applies differentiation rules, and emits a *_grad companion function. No runtime graph. No tracing.
+#[derive_vmap]: Vectorizes a single-sample function over a batch dimension at compile time.
+#[derive_jit]: Fuses operations into a single optimized kernel (leveraging burn backends for GPU).
+Composable: #[derive_grad, derive_vmap] stacks transforms.
+Works on any function operating on tpt_omni tensors.
+API Sketch:
+
+use tpt_grad::prelude::*;
+use tpt_omni::Tensor;
+
+#[derive_grad]
+fn cross_entropy(logits: Tensor, targets: Tensor) -> f32 {
+    let probs = logits.softmax(-1);
+    -(targets * probs.ln()).sum()
+}
+
+// Generated at compile time. Zero runtime overhead.
+let gradients = cross_entropy_grad(logits, targets);
+
+#[derive_grad, derive_vmap]
+fn per_sample_loss(x: Tensor, y: Tensor) -> f32 {
+    ((x - y).powf(2.0)).mean()
+}
+// Generates: per_sample_loss_grad (differentiated)
+//           per_sample_loss_vmap (batched over dim 0)
+
+
+Underlying Engines: syn (AST parsing), burn (GPU backends), quote (code generation).
+3. tpt-ui — The Serverless Wasm Dashboard
+Data dashboards that run entirely in the browser. No server. No cost. No latency.
+The Python Flaw: Streamlit and Dash require a Python backend server. They cost money to host, are slow to start, cannot run offline, and die when the server dies.
+The Rust Superpower: WebAssembly. The entire application (data processing + UI rendering) compiles to Wasm and runs client-side.
+Core Features:
+#[tpt_app] procedural macro: introspects function arguments to auto-generate reactive UI widgets (sliders, dropdowns, file uploads, color pickers).
+Compiles to Wasm via wasm-bindgen + leptos (fine-grained reactive DOM).
+Reactive state: changing a widget re-runs only the affected computation, not the whole app.
+File drag-and-drop parsed entirely in-browser (CSV, Parquet via tpt-io).
+One command: cargo tpt-serve builds, bundles, and opens the browser.
+Deployable as a single static HTML file to GitHub Pages, S3, or IPFS.
+API Sketch:
+
+
+use tpt_ui::prelude::*;
+
+#[tpt_app]
+fn experiment_dashboard(
+    data: FileUpload,
+    threshold: Slider<f32>(0.0..1.0, step=0.01),
+    method: Dropdown<["PCA", "t-SNE", "UMAP"]>,
+) -> impl IntoView {
+    let df = tpt_io::read(data).unwrap();
+    let filtered = df.filter(col("confidence").gt(threshold));
+    let embedding = reduce_dimensions(&filtered, method);
+
+    view! {
+        <h2>"Filtered: " {filtered.len()} " rows"</h2>
+        <ScatterPlot x=embedding.col(0) y=embedding.col(1) color=filtered["label"] />
+        <DataTable data=filtered head=20 />
+    }
+}
+
+Underlying Engines: leptos (reactive Wasm UI), axum (optional dev server), wasm-bindgen.
+4. tpt-lab — The Reactive, Strictly-Typed Notebook
+Fixing Jupyter's fatal flaw: hidden mutable state.
+The Python Flaw: Jupyter notebooks are stateful and order-dependent. Run cells out of order, delete a cell, restart the kernel—your environment is silently corrupted. Notebooks are nearly impossible to version-control or reproduce.
+The Rust Superpower: Compile-time dependency graphs, strict typing, and incremental compilation.
+Core Features:
+Each cell is a pure, typed expression. The notebook engine builds a DAG of dependencies automatically.
+Change Cell A → only cells that transitively depend on A re-execute. No stale state. Ever.
+Full type-checking across cells. A type mismatch in Cell 7 referencing Cell 2 is caught before execution.
+Rich inline rendering: DataFrames render as interactive tables, tensors as heatmaps, plots as embedded SVGs (via tpt-viz).
+Exportable to a single .rs file or a reproducible binary. Git-diffable.
+LSP integration: autocomplete, go-to-definition, and inline documentation across cells.
+API Sketch (notebook cells):
+
+
+
+// Cell 1
+let raw = tpt_io::read_csv("sensor_data.csv")?;
+
+// Cell 2 — auto-reruns if Cell 1 changes
+let cleaned = raw.drop_nulls().filter(col("temp").gt(-40.0));
+tpt_lab::display(&cleaned); // Renders interactive HTML table inline
+
+// Cell 3 — depends on Cell 2 only
+let model = tpt_learn::linear_regression(&cleaned, "temp", &["pressure", "humidity"]);
+tpt_lab::display(model.summary()); // Renders formatted stats table
+
+// Cell 4 — depends on Cells 2 AND 3
+let residuals = cleaned["temp"] - model.predict(&cleaned);
+tpt_viz::histogram(&residuals).bins(50).title("Residuals").show();
+
+Underlying Engines: Custom REPL engine, evcxr (base kernel), rust-analyzer (LSP).
+5. tpt-dag — The In-Process Concurrent Pipeline Executor
+Replacing Airflow, Celery, and Dask with a single Rust binary.
+The Python Flaw: Scaling data pipelines requires heavy external infrastructure (Airflow, Celery, Dask, Spark). Dependency management, serialization, and orchestration become a second project.
+The Rust Superpower: Fearless concurrency (async/await + Rayon), zero-cost abstractions, and single-binary deployment.
+Core Features:
+#[task] macro marks pure functions as pipeline nodes.
+pipeline![] macro defines the DAG declaratively.
+Automatic dependency resolution and topological execution.
+Runs concurrently across all CPU cores (Rayon) or async I/O (Tokio) without user-managed threads.
+Built-in retry, caching (content-addressed), and progress reporting.
+Optional distributed mode: serialize tasks to a cluster via a lightweight coordinator (no external infra).
+Compiles to a single binary. ./my_pipeline --workers 16 is the entire deployment.
+API Sketch:
+
+
+
+use tpt_dag::prelude::*;
+
+#[task(cache = true, retries = 3)]
+fn ingest(path: &str) -> OmniFrame {
+    tpt_io::read_parquet(path).unwrap()
+}
+
+#[task]
+fn clean(raw: OmniFrame) -> OmniFrame {
+    raw.drop_nulls().filter(col("valid").eq(true))
+}
+
+#[task]
+fn train(clean: OmniFrame) -> Model {
+    tpt_learn::fit::<RandomForest>(&clean, "target")
+}
+
+#[task]
+fn evaluate(model: Model, clean: OmniFrame) -> Metrics {
+    model.score(&clean)
+}
+
+fn main() {
+    let metrics = tpt_dag::run(pipeline![
+        ingest("data/*.parquet")
+            -> clean
+            -> [train, evaluate]  // train and evaluate run concurrently
+    ]);
+    println!("{metrics}");
+}
+
+Underlying Engines: tokio, rayon, serde (task serialization).
+6. tpt-viz — GPU-Accelerated Scientific Visualization
+Plotting 100 million points at 60fps. Python cannot do this.
+The Python Flaw: Matplotlib chokes above ~10k points. Plotly.js is browser-bound and slow for large data. Datashader exists but is a separate, clunky library.
+The Rust Superpower: Direct GPU rendering via wgpu + WebGPU. Compile shaders for custom visualizations.
+Core Features:
+Declarative, grammar-of-graphics API (inspired by ggplot2 / Altair, not a wrapper around them).
+GPU-accelerated rendering: scatter plots with 100M+ points at interactive framerates.
+Automatic level-of-detail (LOD): zoom out → aggregate; zoom in → show raw points.
+Outputs: interactive Wasm widget (in tpt-lab / tpt-ui), static SVG/PNG/PDF, or headless server.
+Native integration with tpt_omni: pass tensors and frames directly, no extraction.
+3D volume rendering, contour plots, vector fields for physics/engineering.
+API Sketch:
+
+use tpt_viz::prelude::*;
+
+let data = tpt_omni::read_parquet("simulation.parquet")?; // 200M rows
+
+Plot::new()
+    .layer(
+        Scatter::new(data["x"], data["y"])
+            .color(data["temperature"])
+            .size(0.5)
+            .opacity(0.3),
+    )
+    .layer(
+        Contour::new(data["x"], data["y"], data["pressure"])
+            .levels(20),
+    )
+    .scale_color(Gradient::Viridis)
+    .title("Fluid Simulation t=4.2s")
+    .gpu(true) // Enable WebGPU rendering
+    .show();   // Opens interactive window or renders in notebook
+
+Underlying Engines: wgpu / WebGPU, vello (2D GPU renderer), naga (shader compilation).
+7. tpt-sym — Compile-Time Symbolic Mathematics
+SymPy's power with Rust's compile-time guarantees.
+The Python Flaw: SymPy is entirely runtime. Simplification, differentiation, and equation solving are slow and dynamically typed. Typos in variable names silently create new symbols.
+The Rust Superpower: Compile-time evaluation via const fn and procedural macros. Type-safe symbolic variables.
+Core Features:
+sym! macro for defining typed symbolic variables: let x = sym!(x: Real).
+Compile-time simplification: sym!(x + 0) reduces to x at compile time.
+Symbolic differentiation, integration, and equation solving.
+LaTeX and MathML output for papers.
+Code generation: convert symbolic expressions to optimized tpt_omni tensor operations.
+Unit-aware arithmetic (symbolic units: meters, seconds, kg) with compile-time dimensional analysis.
+API Sketch:
+
+use tpt_sym::prelude::*;
+
+let x = sym!(x: Real);
+let y = sym!(y: Real);
+
+// Compile-time simplification
+let expr = sym!((x + y)^2 - x^2 - 2*x*y - y^2); // Reduces to 0 at compile time
+
+// Symbolic differentiation
+let f = sym!(sin(x) * exp(-x^2));
+let df = f.diff(x); // cos(x)*exp(-x^2) - 2*x*sin(x)*exp(-x^2)
+
+// Generate LaTeX for a paper
+println!("{}", df.to_latex());
+
+// Compile symbolic expression into a fast numerical function
+let fast_fn = f.compile::<f64>(); // Returns impl Fn(f64) -> f64, fully optimized
+let result = fast_fn(1.5);
+
+// Dimensional analysis (compile-time error if units mismatch)
+let velocity: Quantity<Meter / Second> = sym!(distance / time);
+// let bad = sym!(velocity + mass); // COMPILE ERROR: incompatible dimensions
+
+Underlying Engines: Custom CAS engine, const fn evaluation, syn for macro parsing.
+8. tpt-stat — Unified Statistical Modeling
+SciPy.stats + statsmodels + scikit-learn's statistical tools, unified and fast.
+The Python Flaw: Statistical tools are scattered across scipy.stats, statsmodels, scikit-learn, and pingouin. APIs are inconsistent. Performance is limited by the GIL.
+The Rust Superpower: Parallel MCMC sampling, SIMD-accelerated likelihood computations, and a single unified API.
+Core Features:
+Distributions: all standard distributions with parallel sampling and vectorized PDF/CDF.
+Hypothesis tests: t-tests, ANOVA, chi-squared, KS, Mann-Whitney, etc.
+Regression: OLS, GLM, logistic, Poisson, with automatic standard errors and confidence intervals.
+Bayesian inference: built-in MCMC (HMC, NUTS) and variational inference, parallelized across cores.
+Time series: ARIMA, GARCH, seasonal decomposition.
+All results return a typed Summary struct that renders beautifully in tpt-lab.
+API Sketch:
+
+use tpt_stat::prelude::*;
+
+let data = tpt_omni::read_csv("clinical_trial.csv")?;
+
+// Frequentist regression with full summary
+let model = OLS::new(&data)
+    .target("outcome")
+    .features(["age", "dosage", "group"])
+    .robust_se(true) // Heteroscedasticity-robust standard errors
+    .fit()?;
+
+tpt_lab::display(model.summary()); // Beautiful formatted table
+
+// Bayesian hierarchical model with parallel MCMC
+let posterior = Bayesian::new(&data)
+    .model(|p| {
+        let mu = p.normal("mu", 0.0, 10.0);
+        let sigma = p.half_normal("sigma", 1.0);
+        p.observe("y", Normal::new(mu, sigma))
+    })
+    .sample(chains: 8, draws: 4000) // 8 chains, parallelized via Rayon
+    .run()?;
+
+let credible_interval = posterior.credible_interval("mu", 0.95);
+
+
+Underlying Engines: rand_distr, rayon, custom MCMC engine, argmin (optimization).
+9. tpt-io — Universal Scientific Data I/O
+One API for every file format a scientist will ever encounter.
+The Python Flaw: Reading HDF5 requires h5py. NetCDF requires netCDF4. FITS requires astropy.io. Parquet requires pyarrow. Each has a different API, different install headaches, and different memory semantics.
+The Rust Superpower: Unified, zero-copy, memory-mapped I/O with a single API. Compile-time format detection.
+Core Features:
+Single tpt_io::read("file.*") function that auto-detects format from extension and magic bytes.
+Supported formats: CSV, TSV, JSON, Parquet, Arrow IPC, HDF5, NetCDF, FITS, Zarr, Excel, SQLite.
+Zero-copy memory mapping for large files (HDF5, Parquet, FITS).
+Streaming reads for files larger than RAM.
+Schema inference and type coercion.
+tpt_io::write() with the same unified API.
+Glob patterns: tpt_io::read("data/2024-*.parquet") reads and concatenates automatically.
+API Sketch:
+
+use tpt_io::prelude::*;
+
+// Auto-detects format. Zero-copy memory map for Parquet.
+let df = tpt_io::read("experiment.parquet")?;
+
+// Same API for HDF5 (common in physics/biology)
+let hdf = tpt_io::read("simulation.h5")?
+    .dataset("/run/temperature")?;
+
+// Same API for FITS (astronomy)
+let fits = tpt_io::read("galaxy_survey.fits")?
+    .hdu(1)?;
+
+// Glob: read and concatenate 200 files in parallel
+let combined = tpt_io::read("sensors/2026-08-*.csv")?;
+
+// Write with compression
+tpt_io::write(&result, "output.parquet")?
+    .compression(Compression::Zstd(3))
+    .row_group_size(1_000_000)
+    .finish()?;
+
+Underlying Engines: arrow-rs, polars-io, hdf5-rust, netcdf, fitsio, calamine (Excel).
+10. tpt-learn — High-Level ML Training Abstractions
+From "write a training loop" to "declare what you want."
+The Python Flaw: Even with PyTorch Lightning / Keras, training a model requires boilerplate: data loaders, training loops, logging, checkpointing, early stopping, hyperparameter sweeps.
+The Rust Superpower: Type-safe model definitions, compile-time shape checking, and zero-cost training loop abstractions.
+Core Features:
+Model trait: define architecture with compile-time tensor shape verification.
+Trainer struct: handles the training loop, logging, checkpointing, early stopping, and LR scheduling.
+Built-in optimizers: SGD, Adam, AdamW, LAMB, Lion.
+Data loading: integrates with tpt_omni and tpt_io for zero-copy batched data.
+Hyperparameter sweeps: parallel via tpt_dag.
+Model serialization: single-file binary export (no pickle, no safetensors dependency).
+Inference mode: compile trained model to optimized Wasm or ONNX for deployment.
+API Sketch:
+
+use tpt_learn::prelude::*;
+use tpt_grad::prelude::*;
+use tpt_omni::Tensor;
+
+// Define model with compile-time shape checking
+struct Net {
+    fc1: Linear<784, 256>,
+    fc2: Linear<256, 10>,
+}
+
+impl Model for Net {
+    fn forward(&self, x: Tensor) -> Tensor {
+        x.apply(&self.fc1).relu().apply(&self.fc2).softmax(-1)
+    }
+}
+
+fn main() {
+    let data = tpt_io::read("mnist.parquet")?;
+    let (train, val) = data.split(0.8);
+
+    let model = Trainer::new(Net::init())
+        .optimizer(Adam::new(1e-3))
+        .loss(CrossEntropy)
+        .epochs(50)
+        .batch_size(256)
+        .early_stopping(patience: 5, metric: "val_loss")
+        .checkpoint("checkpoints/")
+        .fit(&train, &val)?;
+
+    // Export to Wasm for browser inference via tpt-ui
+    model.export_wasm("model.wasm")?;
+}
+
+
+Underlying Engines: burn (backends: CPU, CUDA, WGPU), tpt-grad, tpt-dag (parallel sweeps).
+11. tpt-script — The Pythonic Rust Scripting Layer
+Write Rust like Python. Zero boilerplate. Instant execution.
+The Python Flaw: Python's killer feature is "executable pseudocode." You can write data.filter(col("a") > 5).plot() and it just works. Rust forces you to write 20 lines of setup, explicit types, and error handling before you can explore data.
+The Rust Superpower: Macros that generate boilerplate, type inference, and a REPL-friendly execution mode.
+Core Features:
+tpt script command: run .tpt files directly without cargo new, Cargo.toml, or compilation ceremony.
+Automatic imports: use tpt_script::prelude::* re-exports the entire TPT stack with Pythonic names.
+script! macro: write Python-like pseudocode that compiles to optimized Rust.
+Implicit error handling: ? is automatic in script mode. Panics are caught and displayed with rich tracebacks.
+REPL integration: works seamlessly with tpt-lab for interactive exploration.
+Type inference helpers: let x = data["col"] infers the column type automatically.
+Pythonic method chaining: .filter(), .groupby(), .plot() work exactly like Pandas.
+API Sketch:
+
+// File: analysis.tpt
+// Run with: tpt script analysis.tpt
+
+use tpt_script::prelude::*;
+
+// No cargo setup. No Cargo.toml. Just write code.
+
+// Load data (auto-infers format)
+data = read("experiment.csv");
+
+// Python-like filtering and grouping
+summary = data
+    .filter(data["age"] > 18)
+    .groupby("department")
+    .agg({
+        "salary": ["mean", "max"],
+        "experience": "mean"
+    });
+
+// Plot directly
+summary.plot.bar(x="department", y="salary_mean", color="blue").show();
+
+// Export results
+summary.to_csv("results.csv");
+
+// Implicit error handling - no unwrap() needed
+model = train(data, target="outcome");
+println!("R² = {}", model.r_squared());
+
+Underlying Engines: Custom CLI wrapper, tpt-omni, tpt-viz, tpt-stat, procedural macros for syntax sugar.
+12. tpt-doc — The LaTeX Killer
+Documents as type-checked, compiled programs. Not fragile text files.
+The LaTeX Flaw: LaTeX is a 40-year-old typesetting system with an archaic macro language, terrible error messages, slow compilation, package management hell, and opaque spacing rules. Debugging a LaTeX document is masochism.
+The Rust Superpower: Rust's macro system is a real programming language. Documents are compiled, type-checked programs with full IDE support.
+Core Features:
+doc! macro: write documents in a Rust DSL with full type safety.
+Compile-time checking: references, citations, cross-references are verified at compile time. Broken links are compile errors.
+Real programming: use Rust's full power for macros, loops, conditionals, and data-driven content.
+Multiple output formats: PDF (via printpdf), HTML, EPUB, or Wasm-rendered interactive documents.
+Beautiful typography: HarfBuzz text shaping, OpenType features, kerning, ligatures.
+Version control friendly: documents are .rs files, fully git-diffable.
+Citation management: compile-time BibTeX parsing with duplicate detection.
+Math typesetting: integrates with tpt-sym for symbolic math rendered to PDF/HTML.
+API Sketch:
+
+// File: paper.rs
+// Compile with: tpt doc build paper.rs --output paper.pdf
+
+use tpt_doc::prelude::*;
+use tpt_sym::sym!;
+
+doc! {
+    title: "Attention Is All You Need",
+    authors: ["Vaswani et al."],
+    date: "2017-06-12",
+    
+    abstract: {
+        "The dominant sequence transduction models are based on complex recurrent 
+        or convolutional neural networks..."
+    },
+    
+    section("Introduction") {
+        p("Recurrent neural networks, long short-term memory and gated recurrent 
+        neural networks in particular, have been firmly established...")
+        
+        // Compile-time verified citation
+        cite("bahdanau2014neural")
+        
+        // Data-driven content: generate a table from actual data
+        let results = tpt_io::read("benchmark_results.parquet")?;
+        table! {
+            caption: "Model Comparison",
+            headers: ["Model", "BLEU", "Params"],
+            rows: results.iter().map(|r| [r["model"], r["bleu"], r["params"]])
+        }
+        
+        // Symbolic math rendered beautifully
+        equation! {
+            let q = sym!(Q: Matrix);
+            let k = sym!(K: Matrix);
+            let v = sym!(V: Matrix);
+            let d_k = sym!(d_k: Real);
+            
+            "Attention" (q, k, v) = "softmax" (q * k.transpose() / sqrt(d_k)) * v
+        }
+    },
+    
+    bibliography("references.bib") // Compile-time BibTeX parsing
+}
+
+
+Underlying Engines: printpdf (PDF generation), harfbuzz (text shaping), tpt-sym (math rendering), custom DSL parser.
+3. Workspace Architecture
+
+
+tpt-rust6/
+├── Cargo.toml                  # Workspace root
+├── crates/
+│   ├── tpt-omni/              # Unified data engine (Arrow-backed)
+│   ├── tpt-grad/              # Compile-time autograd macros
+│   ├── tpt-ui/                # Wasm dashboard generator
+│   ├── tpt-lab/               # Reactive notebook environment
+│   ├── tpt-dag/               # Concurrent pipeline executor
+│   ├── tpt-viz/               # GPU-accelerated visualization
+│   ├── tpt-sym/               # Symbolic math & CAS
+│   ├── tpt-stat/              # Statistical modeling
+│   ├── tpt-io/                # Universal scientific I/O
+│   ├── tpt-learn/             # ML training abstractions
+│   ├── tpt-script/            # Pythonic scripting layer
+│   └── tpt-doc/               # LaTeX killer (typesetting)
+├── examples/
+│   ├── 01_quickstart/         # "Hello, TPT" — load, plot, model
+│   ├── 02_wasm_dashboard/     # Deploy a model as a browser app
+│   ├── 03_bayesian_pipeline/  # Full Bayesian workflow
+│   ├── 04_gpu_simulation/     # 100M-point fluid sim + viz
+│   ├── 05_script_analysis/    # Pythonic data analysis script
+│   └── 06_research_paper/     # Complete paper with tpt-doc
+├── docs/                      # mdBook documentation
+└── benches/                   # Criterion benchmarks vs Python equivalents
+
+
+Dependency Graph (simplified):
+
+tpt-io ──────────────────────────────────────────────────────┐
+                                                            ▼
+tpt-omni ◄──── tpt-sym                                     │
+   │           tpt-stat                                     │
+   │           tpt-grad                                     │
+   ▼               │                                       │
+tpt-viz            ▼                                       │
+   │           tpt-learn ◄─── tpt-dag                      │
+   ▼               │                                       │
+tpt-ui ◄───────────┘                                       │
+   │                                                       │
+   ▼                                                       │
+tpt-lab ◄── (integrates all above for notebook rendering) ──┘
+   │
+   ▼
+tpt-script ◄── (facade over all crates for scripting mode)
+   │
+   ▼
+tpt-doc ◄── (uses tpt-sym for math, tpt-io for data-driven content)
+
+tpt-omni is the foundation. Everything reads from and writes to it. tpt-lab and tpt-ui sit at the top, consuming all other crates for rendering and interaction. tpt-script is the easy-mode facade. tpt-doc is the final output layer.
+4. Development Roadmap
+Phase 1: The Data Foundation (Months 1–3)
+tpt-omni: Arrow-backed unified type, slicing macro, broadcasting.
+tpt-io: CSV, Parquet, HDF5 readers. Glob support.
+Milestone: Load any scientific file, slice it, filter it, view it as a table or tensor.
+Phase 2: The Compute Layer (Months 4–6)
+tpt-grad: #[derive_grad], #[derive_vmap] macros.
+tpt-stat: Distributions, OLS, basic Bayesian sampling.
+tpt-sym: Symbolic variables, differentiation, LaTeX output.
+Milestone: Write a math function, auto-differentiate it, fit a regression, print LaTeX.
+Phase 3: The Execution & Viz Layer (Months 7–9)
+tpt-dag: Task macro, pipeline execution, caching.
+tpt-viz: 2D scatter/line/contour with GPU acceleration.
+tpt-learn: Trainer loop, optimizers, checkpointing.
+Milestone: Define a 4-stage ML pipeline, execute it concurrently, visualize results at 60fps.
+Phase 4: The Interface Layer (Months 10–12)
+tpt-ui: Wasm compilation, #[tpt_app] macro, reactive widgets.
+tpt-lab: Reactive notebook kernel, rich display, LSP integration.
+Milestone: Train a model in tpt-lab, deploy it as a browser app via tpt-ui, share a single HTML file.
+Phase 5: The Scripting & Publishing Layer (Months 13–15)
+tpt-script: CLI tool, script! macro, automatic imports, REPL integration.
+tpt-doc: doc! macro, PDF/HTML output, citation management, math rendering.
+Milestone: Write a data analysis script in 10 lines, generate a publication-ready paper with type-checked references.
+5. Why This Is Not "Python But In Rust"
+Python's Limitation
+TPT's Solution
+Crate
+GIL prevents true parallelism
+Fearless concurrency, Rayon everywhere
+tpt-dag, tpt-omni
+Pandas/NumPy/PyTorch memory copies
+Single Arrow memory, zero-copy views
+tpt-omni
+Streamlit needs a server
+Wasm runs in-browser, costs $0
+tpt-ui
+Jupyter has hidden mutable state
+Compile-time dependency DAG, reactive cells
+tpt-lab
+PyTorch builds graphs at runtime
+Macros differentiate at compile time
+tpt-grad
+Matplotlib dies at 10k points
+GPU rendering handles 100M+ points
+tpt-viz
+SymPy is slow and dynamically typed
+Compile-time CAS with type safety
+tpt-sym
+SciPy/statsmodels/sklearn fragmentation
+Single unified stats API
+tpt-stat
+h5py + netCDF4 + astropy + pyarrow
+One read() function, all formats
+tpt-io
+Training loop boilerplate
+Declarative Trainer, compile-time shapes
+tpt-learn
+Rust's steep learning curve
+Pythonic scripting layer, zero boilerplate
+tpt-script
+LaTeX's archaic macro language
+Documents as type-checked Rust programs
+tpt-doc
+6. Contribution Rules
+No Python wrapping. If a crate's primary purpose is to call Python, it does not belong here.
+No runtime where compile-time works. Gradients, DAGs, type checks, and simplifications must resolve at compile time.
+Zero-copy by default. If data is copied between structures, the PR must justify why.
+Notebook-native. Every public type must implement rich display for tpt-lab.
+Wasm-compatible. Core crates (tpt-omni, tpt-viz, tpt-learn inference) must compile to wasm32-unknown-unknown.
+Scripting-first. Every feature must be accessible via tpt-script with minimal ceremony.
+Type-safe documents. tpt-doc must catch broken references, citations, and cross-references at compile time.
+
+13. Implemented-Signature Appendix
+The sketches above are historical. The following are the shipped signatures
+(correct as of 2026-08-07; verify against `cargo doc`):
+
+- tpt-omni: `OmniFrame::read_parquet(path)`, `frame.as_table()`,
+  `frame.as_tensor::<f64>(name, &shape) -> Result<Tensor<f64>, _>`,
+  `frame.as_sparse()`, `slice![tensor, 0..5, All]`,
+  `Tensor::memory_map(path)` (out-of-core), `Tensor::par_map` / `zip_with`.
+- tpt-io: `tpt_io::read("file.*")` (extension + magic-byte detect),
+  `read("data/2024-*.parquet")` (glob + concat),
+  `read` supports CSV / JSON / Parquet / Arrow-IPC, HDF5 behind `--features hdf5`;
+  `tpt_io::write(&frame, "out.csv"|"out.json")`. FITS/NetCDF/Zarr/Excel/SQLite and
+  PNG/PDF writers are NOT yet present.
+- tpt-grad: `#[derive_grad]`, `#[derive_vmap]`, `#[derive_jit]` (proc-macro crate
+  `tpt-grad-macro`); compose as `#[derive_grad, derive_vmap]`.
+- tpt-stat: `tpt_stat::dist::Distribution::sample_n`, `tests::t_test`,
+  `regression::ols`, `bayes::{sample_hmc, sample_mh, sample_nuts, rhat, credible_interval}`.
+- tpt-sym: `sym!(x)`, `Expr::simplify`, `Expr::diff`, `Expr::eval`, `Expr::to_latex`,
+  `Expr::to_mathml`, `Expr::solve`, `Expr::to_rust_tensor` (codegen to tpt_omni ops),
+  `Quantity` / `Unit` dimensional arithmetic.
+- tpt-dag: `task! { ... }`, `pipeline![]`, `Executor::run`, `DistributedCoordinator::submit`
+  (runs across `workers` Rayon threads, infrastructure-free).
+- tpt-viz: `Plot::new().layer(Scatter/Line/Histogram/Heatmap/Contour/Quiver).to_svg()`,
+  `Plot::save_png(path, w, h)`, `Plot::to_rgba(w, h)` (dependency-free software raster),
+  `Plot3D` / `Scatter3D` / `Surface3D`.
+- tpt-learn: `Model` trait with `IN_DIM`/`OUT_DIM`, `Trainer`, optimizers
+  (SGD/Adam/AdamW/LAMB/Lion), `DataLoader`, `Model::save`/`load`,
+  `Model::to_bytes`/`from_bytes` (wasm-safe); `export_wasm`/`to_onnx` return `Unsupported`.
+- tpt-ui: `#[tpt_app]`, `export_html`, `FileUpload`; `cargo tpt serve` serves the app.
+- tpt-lab: `Notebook`, `cell!`, `Render` rich-display trait, `export_rust`.
+- tpt-script: `tpt_script::run`, `script!`, `TableExt` (`.filter`/`.groupby`/`.agg`/`.plot`),
+  `tpt script file.tpt`.
+- tpt-doc: `doc!`, `equation!`, `to_html`/`to_latex`/`to_pdf`(feature `pdf`)/`to_epub`(feature `epub`).
+- cargo-tpt: `cargo tpt new <name>`, `cargo tpt doctor`, `cargo tpt features`,
+  `cargo tpt serve [--pkg <name>] [--port N] [--no-build] [--open]`.

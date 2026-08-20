@@ -1,0 +1,19 @@
+[package]
+name = "tpt-eng-geo-asset"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+description = "Geographic asset registry: coordinates to logical device/node."
+keywords = ["geospatial", "gis", "assets", "coordinates", "infrastructure"]
+categories = ["science", "data-structures"]
+readme = "README.md"
+repository = "https://github.com/tpt-solutions/tpt-engineering"
+homepage = "https://github.com/tpt-solutions/tpt-engineering"
+
+[dependencies]
+tpt-math-units = { version = "0.1.0" }
+
+[lints]
+rust = { unsafe_op_in_unsafe_fn = "warn", unsafe_code = "forbid" }
+clippy = { all = "warn", missing_errors_doc = "warn", missing_panics_doc = "warn" }

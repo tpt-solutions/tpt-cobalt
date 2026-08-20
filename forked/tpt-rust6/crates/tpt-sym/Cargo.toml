@@ -1,0 +1,10 @@
+[package]
+name = "tpt-sym"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.81"
+license = "MIT OR Apache-2.0"
+description = "Compile-time-friendly symbolic mathematics: typed vars, simplification, differentiation, LaTeX, units"
+
+[dependencies]
+thiserror = { version = "1" }

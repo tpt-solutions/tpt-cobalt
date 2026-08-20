@@ -1,0 +1,117 @@
+// tpt CLI — Command-line interface tool for the TPT Script compiler.
+//
+// This file is the TPT Script implementation of the tpt CLI.  It is compiled
+// by the tptb compiler and linked against the tptr runtime.  The Rust host
+// binary (tptb-cli/src/main.rs) drives argument parsing and calls into the
+// compiled output of this file.
+//
+// Subcommands exposed:
+//   tpt check  <file>            -- type-check without emitting output
+//   tpt compile <file> [-o out]  -- compile to Rust + TPTIR sources
+//   tpt inspect <op>             -- print JSON schema for a built-in op
+//   tpt run    <file>            -- compile, report output and diagnostics
+//   tpt ops                      -- list all built-in operations
+//   tpt docs   <op>              -- print Markdown docs for a built-in op
+//   tpt compat <file>            -- check hardware compatibility of a source file
+
+import tpt
+import tpt.introspect
+
+// ---------------------------------------------------------------------------
+// check
+// ---------------------------------------------------------------------------
+
+@doc("Validate a TPT Script source string for type errors and constraint violations.")
+@input("source: [u8]", description="TPT Script source code to check")
+@output("[u8]", description="JSON array of structured diagnostic objects")
+@complexity("O(n)")
+fn check(source: [u8]) -> [u8] {
+    let report = tpt.introspect.validate_code(source)
+    return report
+}
+
+// ---------------------------------------------------------------------------
+// compile
+// ---------------------------------------------------------------------------
+
+@doc("Compile a TPT Script source string to Rust and TPTIR text.")
+@input("source: [u8]", description="TPT Script source code")
+@output("[u8]", description="JSON object with 'rust_source' and 'tptir_source' fields")
+@complexity("O(n)")
+fn compile(source: [u8]) -> [u8] {
+    let result = tpt.introspect.validate_code(source)
+    let compiled = tpt.compile(source)
+    return compiled
+}
+
+// ---------------------------------------------------------------------------
+// inspect
+// ---------------------------------------------------------------------------
+
+@doc("Return the full JSON schema for one named built-in operation.")
+@input("op_name: [u8]", description="Name of the operation, e.g. 'matmul' or 'relu'")
+@output("[u8]", description="JSON schema including inputs, outputs, constraints, complexity")
+fn inspect(op_name: [u8]) -> [u8] {
+    let schema = tpt.introspect.get_schema(op_name)
+    return schema
+}
+
+// ---------------------------------------------------------------------------
+// ops
+// ---------------------------------------------------------------------------
+
+@doc("Return a JSON array of all available built-in operation names.")
+@output("[u8]", description="JSON array of operation name strings")
+fn ops() -> [u8] {
+    let listing = tpt.introspect.list_operations()
+    return listing
+}
+
+// ---------------------------------------------------------------------------
+// docs
+// ---------------------------------------------------------------------------
+
+@doc("Generate Markdown documentation for one built-in operation.")
+@input("op_name: [u8]", description="Name of the operation to document")
+@input("format: [u8]", description="Output format: 'markdown' or 'pyi'")
+@output("[u8]", description="Formatted documentation string")
+fn docs(op_name: [u8], format: [u8]) -> [u8] {
+    let doc = tpt.introspect.generate_docs(op_name, format)
+    return doc
+}
+
+// ---------------------------------------------------------------------------
+// compat
+// ---------------------------------------------------------------------------
+
+@doc("Check hardware capability requirements of a source file against the host.")
+@input("source: [u8]", description="TPT Script source code to analyse")
+@output("[u8]", description="JSON object with 'compatible: bool' and 'issues: []'")
+fn compat(source: [u8]) -> [u8] {
+    let caps = tpt.introspect.get_capabilities(source)
+    let hw   = tpt.introspect.get_current_hardware()
+    let result = tpt.introspect.check_compatibility(caps, hw)
+    return result
+}
+
+// ---------------------------------------------------------------------------
+// openapi
+// ---------------------------------------------------------------------------
+
+@doc("Emit the full OpenAPI 3.0 schema for the entire TPT built-in API.")
+@output("[u8]", description="OpenAPI 3.0 JSON schema string")
+fn openapi() -> [u8] {
+    let schema = tpt.introspect.generate_openapi_schema()
+    return schema
+}
+
+// ---------------------------------------------------------------------------
+// version
+// ---------------------------------------------------------------------------
+
+@doc("Return the tptb compiler version string.")
+@output("[u8]", description="Semantic version string, e.g. '0.1.0'")
+fn version() -> [u8] {
+    let v = tpt.version()
+    return v
+}

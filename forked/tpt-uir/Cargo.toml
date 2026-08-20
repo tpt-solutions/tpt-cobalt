@@ -1,0 +1,10 @@
+[workspace]
+members = [
+    "crates/tpt-uir-core",
+    "crates/tpt-uir-dialects",
+    "crates/tpt-uir-ffi",
+    "crates/tpt-uir-flatbuffers",
+    "crates/tpt-uir-serde",
+    "crates/tpt-uir-text",
+]
+resolver = "2"

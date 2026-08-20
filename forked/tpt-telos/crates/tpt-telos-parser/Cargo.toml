@@ -1,0 +1,19 @@
+[package]
+name = "tpt-telos-parser"
+version = "0.2.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+rust-version = "1.74"
+authors = ["TPT Solutions"]
+repository = "https://github.com/tpt-solutions/tpt-telos"
+homepage = "https://github.com/tpt-solutions/tpt-telos"
+readme = "README.md"
+documentation = "https://docs.rs/tpt-telos-parser"
+keywords = ["parser", "lexer", "ast", "grammar", "telos"]
+categories = ["parser-implementations", "compilers"]
+description = "Lexer, parser and AST for the tpt-telos language"
+
+[dependencies]
+
+[dev-dependencies]
+proptest = "1"

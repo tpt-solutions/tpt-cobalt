@@ -1,0 +1,28 @@
+[package]
+name = "tpt-for-trace-macros"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+description = "Trace / instrumentation macros for verification (no_std global tracer)."
+
+readme = "README.md"
+keywords = ["tracing", "instrumentation", "macros", "verification", "logging"]
+categories = ["development-tools::debugging", "rust-patterns", "no-std"]
+
+[dependencies]
+
+[features]
+default = ["std"]
+std = []
+alloc = []
+
+[lints]
+rust = { unsafe_op_in_unsafe_fn = "warn" }
+clippy = { all = "warn" }
+
+[[example]]
+name = "trace_macros_basic"
+path = "examples/packet_trace.rs"
+

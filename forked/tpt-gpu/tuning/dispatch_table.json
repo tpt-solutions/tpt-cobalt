@@ -1,0 +1,116 @@
+{
+  "version": "1.1",
+  "description": "Cross-GPU dispatch table with community-contributed tuning data",
+  "last_updated": "2024-06-28T00:00:00Z",
+  "entries": {
+    "vector_add_f32_1024": {
+      "key": "vector_add_f32_1024",
+      "kernel_name": "vector_add",
+      "elem_type": "f32",
+      "shape": [1024],
+      "profiles": {
+        "RTX_3090": {"block_size": 256, "grid_size": 4, "execution_time_ms": 0.5},
+        "RTX_4090": {"block_size": 256, "grid_size": 4, "execution_time_ms": 0.28},
+        "RTX_4080": {"block_size": 256, "grid_size": 4, "execution_time_ms": 0.35},
+        "A100": {"block_size": 256, "grid_size": 4, "execution_time_ms": 0.45},
+        "RX_7900_XTX": {"block_size": 256, "grid_size": 4, "execution_time_ms": 0.52},
+        "A770": {"block_size": 256, "grid_size": 4, "execution_time_ms": 0.68}
+      }
+    },
+    "matmul_f32_1024x1024": {
+      "key": "matmul_f32_1024x1024",
+      "kernel_name": "matmul",
+      "elem_type": "f32",
+      "shape": [1024, 1024],
+      "profiles": {
+        "RTX_3090": {"block_size": 32, "grid_size": 32, "execution_time_ms": 2.3},
+        "RTX_4090": {"block_size": 32, "grid_size": 32, "execution_time_ms": 1.15},
+        "RTX_4080": {"block_size": 32, "grid_size": 32, "execution_time_ms": 1.42},
+        "A100": {"block_size": 32, "grid_size": 32, "execution_time_ms": 3.2},
+        "RX_7900_XTX": {"block_size": 32, "grid_size": 32, "execution_time_ms": 2.85},
+        "A770": {"block_size": 32, "grid_size": 32, "execution_time_ms": 4.25}
+      }
+    },
+    "matmul_f32_4096x4096": {
+      "key": "matmul_f32_4096x4096",
+      "kernel_name": "matmul",
+      "elem_type": "f32",
+      "shape": [4096, 4096],
+      "profiles": {
+        "RTX_3090": {"block_size": 48, "grid_size": 64, "execution_time_ms": 28.5},
+        "RTX_4090": {"block_size": 48, "grid_size": 64, "execution_time_ms": 18.5},
+        "RTX_4080": {"block_size": 48, "grid_size": 64, "execution_time_ms": 23.1},
+        "A100": {"block_size": 48, "grid_size": 64, "execution_time_ms": 165.0},
+        "RX_7900_XTX": {"block_size": 48, "grid_size": 64, "execution_time_ms": 48.2},
+        "A770": {"block_size": 48, "grid_size": 64, "execution_time_ms": 62.8}
+      }
+    },
+    "softmax_f32_1024": {
+      "key": "softmax_f32_1024",
+      "kernel_name": "softmax",
+      "elem_type": "f32",
+      "shape": [1024],
+      "profiles": {
+        "RTX_3090": {"block_size": 256, "grid_size": 1, "execution_time_ms": 0.8},
+        "RTX_4090": {"block_size": 256, "grid_size": 1, "execution_time_ms": 0.42},
+        "RTX_4080": {"block_size": 256, "grid_size": 1, "execution_time_ms": 0.52},
+        "A770": {"block_size": 256, "grid_size": 1, "execution_time_ms": 0.78}
+      }
+    },
+    "flash_attention_f32_1024x1024": {
+      "key": "flash_attention_f32_1024x1024",
+      "kernel_name": "flash_attention",
+      "elem_type": "f32",
+      "shape": [1024, 1024],
+      "profiles": {
+        "RTX_3090": {"block_size": 128, "grid_size": 8, "execution_time_ms": 5.2},
+        "RTX_4090": {"block_size": 128, "grid_size": 8, "execution_time_ms": 2.65},
+        "RTX_4080": {"block_size": 128, "grid_size": 8, "execution_time_ms": 3.32},
+        "A100": {"block_size": 128, "grid_size": 4, "execution_time_ms": 7.5},
+        "RX_7900_XTX": {"block_size": 128, "grid_size": 8, "execution_time_ms": 5.92},
+        "A770": {"block_size": 128, "grid_size": 8, "execution_time_ms": 8.45}
+      }
+    },
+    "gemm_f16_4096x4096x4096": {
+      "key": "gemm_f16_4096x4096x4096",
+      "kernel_name": "gemm",
+      "elem_type": "f16",
+      "shape": [4096, 4096, 4096],
+      "profiles": {
+        "RTX_4090": {"block_size": 48, "grid_size": 64, "execution_time_ms": 6.8},
+        "RTX_4080": {"block_size": 48, "grid_size": 64, "execution_time_ms": 8.5},
+        "A100": {"block_size": 48, "grid_size": 32, "execution_time_ms": 88.0},
+        "RX_7900_XTX": {"block_size": 48, "grid_size": 64, "execution_time_ms": 22.4},
+        "A770": {"block_size": 48, "grid_size": 64, "execution_time_ms": 31.2}
+      }
+    },
+    "conv2d_f32_224x224_c3_k64": {
+      "key": "conv2d_f32_224x224_c3_k64",
+      "kernel_name": "conv2d",
+      "elem_type": "f32",
+      "shape": [224, 224, 3, 64],
+      "profiles": {
+        "RTX_4090": {"block_size": 256, "grid_size": 64, "execution_time_ms": 1.05},
+        "A770": {"block_size": 256, "grid_size": 64, "execution_time_ms": 1.85}
+      }
+    },
+    "conv_bn_relu_f32_32x32": {
+      "key": "conv_bn_relu_f32_32x32",
+      "kernel_name": "conv_bn_relu",
+      "elem_type": "f32",
+      "shape": [32, 32],
+      "profiles": {
+        "RTX_3090": {"block_size": 256, "grid_size": 16, "execution_time_ms": 1.5}
+      }
+    }
+  },
+  "statistics": {
+    "total_profiles": 6,
+    "total_kernels": 13,
+    "vendors": {
+      "NVIDIA": 4,
+      "AMD": 1,
+      "Intel": 1
+    }
+  }
+}

@@ -1,0 +1,26 @@
+[package]
+name = "tpt-physics-wasm"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.84"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+description = "WebAssembly bindings for the tpt-physics DEM and CFD solvers (WebGL playground)."
+repository = "https://github.com/tpt-solutions/tpt-physics"
+homepage = "https://github.com/tpt-solutions/tpt-physics"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+wasm-bindgen = "0.2"
+js-sys = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+console_error_panic_hook = "0.1"
+tpt-phys-dem = { path = "../tpt-phys-dem" }
+tpt-phys-cfd = { path = "../tpt-phys-cfd" }
+tpt-phys-electro-thermal = { path = "../tpt-phys-electro-thermal" }
+
+[features]
+default = []

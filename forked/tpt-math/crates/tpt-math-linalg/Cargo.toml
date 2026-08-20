@@ -1,0 +1,36 @@
+[package]
+name = "tpt-math-linalg"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.84"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+description = "Linear algebra paired with tpt-math-units for dimensional safety (in-house dense backend, via tpt-math-linalg-dense)."
+readme = "README.md"
+repository = "https://github.com/tpt-solutions/tpt-math"
+homepage = "https://github.com/tpt-solutions/tpt-math"
+documentation = "https://docs.rs/tpt-math-linalg"
+keywords = ["linear-algebra", "matrix", "vector", "linalg", "no-std"]
+categories = ["mathematics", "science", "algorithms", "no-std"]
+
+[dependencies]
+tpt-math-linalg-dense = { path = "../tpt-math-linalg-dense", version = "0.1.0", default-features = false }
+tpt-math-units = { path = "../tpt-math-units", version = "0.1.0", default-features = false }
+tpt-math-numeric = { path = "../tpt-math-numeric", version = "0.1.0", default-features = false }
+
+[features]
+default = ["std"]
+std = ["tpt-math-linalg-dense/std", "tpt-math-units/std", "tpt-math-numeric/std"]
+alloc = ["tpt-math-linalg-dense/alloc", "tpt-math-units/alloc", "tpt-math-numeric/alloc"]
+
+
+[lints]
+rust = { unsafe_op_in_unsafe_fn = "warn", unsafe_code = "forbid" }
+clippy = { all = "warn" }
+
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "linalg_bench"
+harness = false

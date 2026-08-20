@@ -1,0 +1,79 @@
+Design Document: tpt-physics
+A Pure Rust, AI-Native Engineering & Physics Simulation Framework
+Project: TPT Solutions (tpt-physics)
+Author: TPT Solutions
+License: Dual MIT / Apache-2.0 (Strictly enforced, no GPL/LGPL dependencies)
+Status: Design Phase 1.0
+Target Ecosystem: Rust (with FFI bridges to Go/TypeScript via tpt tooling)
+1. Executive Summary
+The engineering simulation industry is dominated by monolithic, decades-old C++ and Fortran codebases (e.g., OpenFOAM, CalculiX, ANSYS). These tools suffer from build-system hell, opaque memory management, restrictive licenses (GPL), and poor integration with modern AI/ML workflows.
+tpt-physics is a ground-up, pure Rust rewrite of core physics simulation paradigms. It is designed to be modular, data-oriented, unit-safe, and AI-native. It serves as the critical bridge between tpt-cad (geometry) and tpt-silicon (hardware/embedded), enabling high-fidelity Finite Element Analysis (FEA), Discrete Element Method (DEM), and Computational Fluid Dynamics (CFD) without a single line of C/C++ FFI.
+2. Core Design Principles
+100% Pure Rust: Zero C/C++ FFI wrappers. No bindgen, no CMake, no system-level dependency hell. Cross-compiles trivially to WASM, Linux, Windows, and macOS.
+Strict MIT/Apache-2.0 Licensing: All dependencies are audited. We explicitly avoid GPL/LGPL crates (like those wrapping OpenCASCADE or OpenFOAM) to ensure commercial viability for TPT Solutions and the broader industry.
+Data-Oriented Design (DOD): Physics simulations are bottlenecked by memory bandwidth, not CPU cycles. tpt-physics uses Structure of Arrays (SoA) layouts and cache-friendly iteration, leveraging rayon for fearless parallelism.
+Compile-Time Unit Safety: Leverages Rust’s type system (via crates like uom) to prevent catastrophic unit mismatches (e.g., adding Newtons to Pascals) at compile time, not runtime.
+AI-Native & Differentiable: Designed from day one to expose clean, stateful APIs that can be hooked into tpt-anima / tpt-eve for reinforcement learning, surrogate modeling, and agentic design optimization.
+3. Architecture Overview
+The framework is split into discrete, composable crates under the tpt-physics workspace. This prevents the "monolith trap" and allows users to pull in only what they need.
+tpt-physics/
+├── tpt-physics-core      # Foundational math, units, and mesh abstractions
+├── tpt-physics-solver    # Linear algebra, sparse matrices, CPU/GPU dispatch
+├── tpt-physics-fea       # Finite Element Analysis (Structural, Thermal)
+├── tpt-physics-dem       # Discrete Element Method (Granular, Particle, Concrete flow)
+├── tpt-physics-cfd       # Computational Fluid Dynamics (Lattice Boltzmann / Navier-Stokes)
+└── tpt-physics-ai        # (Optional) Differentiable physics wrappers for tpt-anima/tpt-eve
+
+4. Module Breakdown
+4.1 tpt-physics-core
+The foundational layer. No heavy solvers here, just robust data structures.
+Unit System: Wrapper around uom (Units of Measure) enforcing strict SI unit typing.
+Mesh Abstraction: A pure Rust, topology-aware mesh representation (Nodes, Elements, Faces) designed to ingest outputs directly from tpt-cad or biocad without relying on heavy STEP/IGES parsers.
+Material Database: A type-safe registry of material properties (Young’s Modulus, Poisson’s ratio, density) with JSON/serde serialization.
+4.2 tpt-physics-solver
+The computational engine. This is where spark / gpu infrastructure integrates.
+Sparse Linear Algebra: Built on top of pure Rust crates like faer or sprs.
+Solver Algorithms: Conjugate Gradient (CG), GMRES, and explicit/implicit time-integration schemes (Newmark-beta, Runge-Kutta).
+Hardware Dispatch: A unified API that can route matrix operations to multi-threaded CPU (rayon) or GPU (wgpu / custom spark kernels) based on problem size, with zero code changes for the end user.
+4.3 tpt-physics-fea (Finite Element Analysis)
+The primary MVP domain. Focuses on structural integrity.
+Element Types: Linear and quadratic tetrahedrons, hexahedrons, and beam/shell elements.
+Capabilities: Static linear stress/strain analysis, modal analysis (natural frequencies), and basic non-linear large-deformation analysis.
+Boundary Conditions: Idiomatic Rust builders for applying fixed supports, point loads, pressure loads, and thermal gradients.
+4.4 tpt-physics-dem (Discrete Element Method)
+Critical for granular materials and your immediate real-world use case.
+Particle Physics: Hertz-Mindlin contact models, friction, and damping.
+Use Case: Simulating the flow of wet concrete aggregate through a pile cage, or soil-structure interaction around a 3D-printed spacer.
+Optimization: Spatial hashing (broad-phase collision) and SIMD-accelerated narrow-phase contact resolution.
+4.5 tpt-physics-cfd (Computational Fluid Dynamics)
+Phase 2/3 Target.
+Approach: Instead of replicating OpenFOAM’s complex Finite Volume Method (FVM) immediately, start with a Lattice Boltzmann Method (LBM) solver. LBM is highly parallelizable, maps perfectly to GPU architectures (spark), and is excellent for incompressible flow (e.g., air flow over a structure, water drainage).
+
+7. Licensing & Compliance Strategy
+The C++ simulation world is a minefield of GPL (OpenFOAM, CalculiX) and LGPL licenses, which poison commercial, proprietary, or even some open-source projects.
+Rule 1: tpt-physics is strictly Dual MIT / Apache-2.0.
+Rule 2: All dependencies must be vetted via cargo-deny. Any crate with copyleft (GPL, AGPL, SSPL) is immediately rejected.
+Rule 3: We will not wrap existing C++ solvers. If an algorithm is needed, it is implemented natively in Rust. This guarantees our license purity and long-term maintainability.
+8. Technical Stack & Approved Dependencies
+We leverage the best of the mature, permissively licensed Rust ecosystem:
+Math/Linear Algebra: faer (high-performance pure Rust linear algebra), nalgebra (for smaller, fixed-size matrix ops).
+Units: uom (Units of Measure).
+Parallelism: rayon (CPU), wgpu or custom spark kernels (GPU).
+Serialization: serde, bincode (for fast state saving/loading).
+Logging/Tracing: tracing (for profiling solver convergence and AI agent telemetry).
+Testing: proptest (property-based testing to ensure physical laws hold across random inputs).
+9. Development Roadmap
+Phase 1: Foundation & FEA MVP (Months 1-3)
+Establish tpt-physics workspace and cargo-deny licensing pipeline.
+Implement tpt-physics-core (Units, Mesh, Materials).
+Implement tpt-physics-solver (Basic sparse matrix ops, CG solver).
+Implement tpt-physics-fea (Linear static analysis, tetrahedral elements).
+Milestone: Successfully simulate the 3D-printed pile cage spacer.
+Phase 2: Granular Physics & Performance (Months 4-6)
+Implement tpt-physics-dem (Particle contact, spatial hashing).
+Integrate GPU acceleration via spark/wgpu for large DEM particle counts (>100k particles).
+Add non-linear FEA capabilities (large deformations, plasticity).
+Phase 3: Fluid Dynamics & AI Integration (Months 7-12)
+Implement tpt-physics-cfd (Lattice Boltzmann Method for incompressible flow).
+Develop tpt-physics-ai wrappers to expose simulation states as Gymnasium-like environments for tpt-anima reinforcement learning agents.
+Publish comprehensive documentation, benchmarks, and the "Spacer Benchmark" case study.

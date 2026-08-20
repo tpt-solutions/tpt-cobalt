@@ -1,0 +1,29 @@
+[package]
+name = "tpt-math-linalg-sparse"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.84"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+description = "In-house sparse linear algebra (COO/CSR/CSC) with iterative solvers (CG, BiCGSTAB). No external sparse backend; complements tpt-fem-sparse."
+readme = "README.md"
+repository = "https://github.com/tpt-solutions/tpt-math"
+homepage = "https://github.com/tpt-solutions/tpt-math"
+documentation = "https://docs.rs/tpt-math-linalg-sparse"
+keywords = ["linear-algebra", "sparse", "matrix", "csr", "no-std"]
+categories = ["mathematics", "science", "algorithms", "no-std"]
+
+[dependencies]
+tpt-math-numeric = { path = "../tpt-math-numeric", version = "0.1.0", default-features = false }
+tpt-math-linalg-dense = { path = "../tpt-math-linalg-dense", version = "0.1.0", default-features = false }
+
+[features]
+default = ["std"]
+# `std` pulls in the allocator (dynamic vectors need a heap).
+std = ["alloc", "tpt-math-numeric/std", "tpt-math-linalg-dense/std"]
+# All sparse containers and the dense RHS/solution type need an allocator.
+alloc = ["tpt-math-numeric/alloc", "tpt-math-linalg-dense/alloc"]
+
+[lints]
+rust = { unsafe_op_in_unsafe_fn = "warn", unsafe_code = "forbid" }
+clippy = { all = "warn" }

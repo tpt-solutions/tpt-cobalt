@@ -1,0 +1,21 @@
+[package]
+name = "tpt-playground"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.81"
+license = "MIT OR Apache-2.0"
+description = "Wasm runtime for the browser-based 'Try TPT' playground"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+tpt-script = { path = "../tpt-script" }
+tpt-omni = { path = "../tpt-omni" }
+# `tpt-script` pulls `rand` -> `getrandom`, which on `wasm32-unknown-unknown`
+# refuses to compile unless the `js` feature is on. Enabling it here unifies
+# the feature across the whole wasm build so the RNG works in the browser.
+getrandom = { version = "0.2", features = ["js"] }
+
+[features]
+default = []

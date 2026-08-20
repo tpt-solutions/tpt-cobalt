@@ -1,0 +1,28 @@
+[package]
+name = "tpt-doc"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.81"
+license = "MIT OR Apache-2.0"
+description = "Type-checked documents -- the LaTeX killer (doc! macro)"
+
+[dependencies]
+tpt-sym = { path = "../tpt-sym" }
+tpt-omni = { path = "../tpt-omni" }
+arrow = { version = "54" }
+thiserror = { version = "1" }
+printpdf = { version = "0.7", optional = true }
+zip = { version = "2", optional = true, default-features = false, features = ["deflate"] }
+rustybuzz = { version = "0.20", optional = true }
+wasm-encoder = { version = "0.255", optional = true }
+
+[features]
+default = []
+# Text-only PDF backend via printpdf.
+pdf = ["dep:printpdf"]
+# EPUB 3 backend (thin wrapper over the HTML renderer).
+epub = ["dep:zip"]
+# HarfBuzz (rustybuzz) text shaping for the PDF backend.
+harfbuzz = ["dep:rustybuzz"]
+# Wasm-rendered, interactive HTML documents.
+wasm = ["dep:wasm-encoder"]

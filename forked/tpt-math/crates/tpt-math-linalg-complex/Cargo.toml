@@ -1,0 +1,37 @@
+[package]
+name = "tpt-math-linalg-complex"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.84"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+description = "In-house complex-valued linear algebra: complex matrices, LU/Cholesky decompositions and a QR eigenvalue solver for EM/quantum work. Built on tpt-math-linalg-dense storage. no_std + alloc."
+readme = "README.md"
+repository = "https://github.com/tpt-solutions/tpt-math"
+homepage = "https://github.com/tpt-solutions/tpt-math"
+documentation = "https://docs.rs/tpt-math-linalg-complex"
+keywords = ["linear-algebra", "complex", "matrix", "eigenvalue", "no-std"]
+categories = ["mathematics", "science", "algorithms", "no-std"]
+
+[dependencies]
+tpt-math-linalg-dense = { path = "../tpt-math-linalg-dense", version = "0.1.0", default-features = false }
+tpt-math-numeric = { path = "../tpt-math-numeric", version = "0.1.0", default-features = false }
+
+[features]
+default = ["std"]
+# `std` pulls in the allocator (dynamic vectors need a heap).
+std = ["tpt-math-linalg-dense/std", "tpt-math-numeric/std", "alloc"]
+# Dynamic vectors/matrices always need an allocator.
+alloc = ["tpt-math-linalg-dense/alloc", "tpt-math-numeric/alloc"]
+
+[dev-dependencies]
+criterion = "0.5"
+approx = "0.5"
+
+[[bench]]
+name = "linalg_complex_bench"
+harness = false
+
+[lints]
+rust = { unsafe_op_in_unsafe_fn = "warn", unsafe_code = "forbid" }
+clippy = { all = "warn" }

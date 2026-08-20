@@ -1,0 +1,19 @@
+[package]
+name = "tpt-eng-controls"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+description = "PID / state-space / transfer-function primitives."
+readme = "README.md"
+keywords = ["engineering", "control", "pid", "state-space", "transfer-function"]
+categories = ["science", "mathematics", "algorithms"]
+repository = "https://github.com/tpt-solutions/tpt-engineering"
+homepage = "https://github.com/tpt-solutions/tpt-engineering"
+
+[dependencies]
+tpt-math-linalg = { version = "0.1.0" }
+
+[lints]
+rust = { unsafe_op_in_unsafe_fn = "warn", unsafe_code = "forbid" }
+clippy = { all = "warn", missing_errors_doc = "warn", missing_panics_doc = "warn" }

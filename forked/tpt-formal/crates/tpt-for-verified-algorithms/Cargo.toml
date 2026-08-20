@@ -1,0 +1,24 @@
+[package]
+name = "tpt-for-verified-algorithms"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+description = "Verified algorithm implementations guarded by design-by-contract checks."
+
+readme = "README.md"
+keywords = ["algorithms", "verification", "contract", "formal-verification", "correctness"]
+categories = ["algorithms", "rust-patterns"]
+
+[dependencies]
+tpt-for-contract = { path = "../tpt-for-contract", version = "0.1.0" }
+
+[lints]
+rust = { unsafe_op_in_unsafe_fn = "warn" }
+clippy = { all = "warn" }
+
+[[example]]
+name = "verified_algorithms_basic"
+path = "examples/algorithms_demo.rs"
+

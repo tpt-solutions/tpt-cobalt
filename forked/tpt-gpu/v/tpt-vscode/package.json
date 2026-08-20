@@ -1,0 +1,101 @@
+{
+  "name": "tpt-script",
+  "displayName": "TPT Script",
+  "description": "Language support for TPT Script (.tpts) - syntax highlighting, LSP, and more",
+  "version": "0.1.0",
+  "publisher": "tpt-gpu",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Linters",
+    "Formatters"
+  ],
+  "keywords": [
+    "tpt",
+    "tpt-script",
+    "gpu",
+    "cuda",
+    "ml",
+    "tensor"
+  ],
+  "activationEvents": [
+    "onLanguage:tpt"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "tpt",
+        "aliases": [
+          "TPT Script",
+          "tpt"
+        ],
+        "extensions": [
+          ".tpts"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "tpt",
+        "scopeName": "source.tpt",
+        "path": "./syntaxes/tpt.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "type": "object",
+      "title": "TPT Script",
+      "properties": {
+        "tpt-gpu-lsp.serverPath": {
+          "type": "string",
+          "default": "tpt-gpu-lsp",
+          "description": "Path to the tpt-gpu-lsp server executable"
+        },
+        "tpt-gpu-lsp.trace.server": {
+          "type": "string",
+          "enum": ["off", "messages", "verbose"],
+          "default": "off",
+          "description": "Traces the communication between VS Code and the language server"
+        },
+        "tpt-gpu-script-format.onSave": {
+          "type": "boolean",
+          "default": false,
+          "description": "Auto-format on save"
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "tpt.format",
+        "title": "TPT Script: Format Document"
+      },
+      {
+        "command": "tpt.lint",
+        "title": "TPT Script: Lint Document"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "tpt.format",
+        "key": "shift+alt+f",
+        "when": "editorLangId == tpt"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.80.0",
+    "@types/node": "^18.0.0",
+    "typescript": "^5.1.0"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^8.1.0"
+  }
+}

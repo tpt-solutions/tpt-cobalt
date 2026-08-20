@@ -1,0 +1,25 @@
+[package]
+name = "out-gpu-dispatch"
+version = "0.1.0"
+edition = "2021"
+authors = ["TPT Solutions"]
+description = "Performance-critical dispatch paths for TPT framework backends"
+license = "MIT OR Apache-2.0 WITH LLVM-exception"
+publish = false
+
+[lib]
+name = "_dispatch"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.29", features = ["extension-module"] }
+numpy = "0.29"
+tpt-gpu-runtime = { path = "../tpt-gpu-runtime", optional = true }
+
+[features]
+# Build with hardware runtime support
+hardware = ["tpt-gpu-runtime"]
+# Simulation mode (default): pure Rust fallback, no tptr dependency
+default = []
+
+[dev-dependencies]

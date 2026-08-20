@@ -1,0 +1,135 @@
+// 02_custom_kernel.tpts — Writing custom GPU kernels in TPT Script.
+//
+// This example shows how to write kernels that map directly to TPTIR
+// via the @requires_gpu annotation, then benchmark and profile them.
+//
+// Topics covered:
+//   - type alias declarations
+//   - custom fused kernel (GELU activation + linear projection)
+//   - per-kernel constraints enforced at compile time
+//   - calling the profiler from host code
+
+import tpt
+
+// ---------------------------------------------------------------------------
+// Type aliases
+// ---------------------------------------------------------------------------
+
+// A 2-D batch of row vectors.
+type RowBatch = Tensor[f32, *, *]
+
+// ---------------------------------------------------------------------------
+// GELU activation (approximate — Hendrycks & Gimpel 2016)
+// ---------------------------------------------------------------------------
+// GELU(x) ≈ 0.5 * x * (1 + tanh(sqrt(2/π) * (x + 0.044715 * x³)))
+
+@doc("Approximate GELU activation: 0.5·x·(1 + tanh(√(2/π)·(x + 0.044715·x³))).")
+@input("x: Tensor[f32, *]", description="Input tensor, any shape")
+@output("Tensor[f32, *]", description="GELU(x), same shape as input")
+@requires_gpu(true)
+@complexity("O(n)")
+fn gelu(x: Tensor[f32, *]) -> Tensor[f32, *] {
+    let c1  = 0.7978845608   // sqrt(2 / pi)
+    let c2  = 0.044715
+
+    let x3  = tpt.mul(tpt.mul(x, x), x)
+    let arg = tpt.mul_scalar(tpt.add(x, tpt.mul_scalar(x3, c2)), c1)
+    let th  = tpt.tanh(arg)
+    let out = tpt.mul(x, tpt.mul_scalar(tpt.add_scalar(th, 1.0), 0.5))
+    return out
+}
+
+// ---------------------------------------------------------------------------
+// Fused linear + GELU
+// ---------------------------------------------------------------------------
+// output = GELU(x @ W^T + bias)
+
+@doc("Fused linear projection followed by GELU: GELU(x·Wᵀ + b).")
+@input("x: RowBatch",           description="Input: [batch, in_features]")
+@input("weight: Tensor[f32, *, *]", description="Weight matrix: [out_features, in_features]")
+@input("bias: Tensor[f32, *]",  description="Bias vector: [out_features]")
+@output("RowBatch", description="Output: [batch, out_features]")
+@requires_gpu(true)
+@complexity("O(batch * out_features * in_features)")
+fn linear_gelu(x: RowBatch,
+               weight: Tensor[f32, *, *],
+               bias: Tensor[f32, *]) -> RowBatch {
+    let proj = tpt.matmul(x, tpt.transpose(weight))
+    let biased = tpt.broadcast_add(proj, bias)
+    let out  = gelu(biased)
+    return out
+}
+
+// ---------------------------------------------------------------------------
+// Fused two-layer FFN (as in a Transformer feed-forward block)
+// ---------------------------------------------------------------------------
+// FFN(x) = linear_gelu(x, W1, b1) @ W2^T + b2
+
+@doc("Two-layer feed-forward network with GELU between layers.")
+@input("x:  RowBatch",              description="Input: [batch, d_model]")
+@input("w1: Tensor[f32, *, *]",     description="First weight:  [d_ff, d_model]")
+@input("b1: Tensor[f32, *]",        description="First bias:   [d_ff]")
+@input("w2: Tensor[f32, *, *]",     description="Second weight: [d_model, d_ff]")
+@input("b2: Tensor[f32, *]",        description="Second bias:  [d_model]")
+@output("RowBatch",                  description="Output: [batch, d_model]")
+@requires_gpu(true)
+@complexity("O(batch * d_model * d_ff)")
+fn ffn(x: RowBatch,
+       w1: Tensor[f32, *, *], b1: Tensor[f32, *],
+       w2: Tensor[f32, *, *], b2: Tensor[f32, *]) -> RowBatch {
+    let h   = linear_gelu(x, w1, b1)
+    let out = tpt.broadcast_add(tpt.matmul(h, tpt.transpose(w2)), b2)
+    return out
+}
+
+// ---------------------------------------------------------------------------
+// Layer normalisation
+// ---------------------------------------------------------------------------
+
+@doc("Layer normalisation over the last dimension.")
+@input("x:     Tensor[f32, *, *]", description="Input: [batch, d_model]")
+@input("gamma: Tensor[f32, *]",    description="Scale: [d_model]")
+@input("beta:  Tensor[f32, *]",    description="Shift: [d_model]")
+@output("Tensor[f32, *, *]", description="Normalised output, same shape as x")
+@requires_gpu(true)
+@complexity("O(batch * d_model)")
+fn layer_norm(x:     Tensor[f32, *, *],
+              gamma: Tensor[f32, *],
+              beta:  Tensor[f32, *]) -> Tensor[f32, *, *] {
+    let eps   = 1e-5
+    let mean  = tpt.mean(x, dim=-1, keepdim=true)
+    let diff  = tpt.sub(x, mean)
+    let var   = tpt.mean(tpt.mul(diff, diff), dim=-1, keepdim=true)
+    let denom = tpt.sqrt(tpt.add_scalar(var, eps))
+    let norm  = tpt.div(diff, denom)
+    let out   = tpt.broadcast_add(tpt.broadcast_mul(norm, gamma), beta)
+    return out
+}
+
+// ---------------------------------------------------------------------------
+// Host driver: allocate weights and benchmark the FFN
+// ---------------------------------------------------------------------------
+
+@doc("Allocate random weights and run the FFN kernel once for timing.")
+@input("batch:   i64", description="Batch size")
+@input("d_model: i64", description="Model dimension")
+@input("d_ff:    i64", description="Feed-forward expansion dimension")
+@output("f32", description="Sum of the output tensor (for correctness sanity check)")
+@requires_gpu(false)
+fn run_ffn_example(batch: i64, d_model: i64, d_ff: i64) -> f32 {
+    let x  = tpt.randn([batch, d_model], dtype=f32)
+    let w1 = tpt.randn([d_ff, d_model],  dtype=f32)
+    let b1 = tpt.zeros([d_ff],           dtype=f32)
+    let w2 = tpt.randn([d_model, d_ff],  dtype=f32)
+    let b2 = tpt.zeros([d_model],        dtype=f32)
+
+    let gamma = tpt.ones([d_model],  dtype=f32)
+    let beta  = tpt.zeros([d_model], dtype=f32)
+
+    let h   = ffn(x, w1, b1, w2, b2)
+    let out = layer_norm(h, gamma, beta)
+
+    tpt.sync()
+    let s = tpt.sum(out)
+    return s
+}

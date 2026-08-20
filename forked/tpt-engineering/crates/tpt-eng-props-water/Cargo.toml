@@ -1,0 +1,29 @@
+[package]
+name = "tpt-eng-props-water"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+description = "IAPWS-IF97 water/steam property tables."
+readme = "README.md"
+keywords = ["engineering", "thermodynamics", "water", "steam", "properties"]
+categories = ["science", "algorithms", "no-std"]
+repository = "https://github.com/tpt-solutions/tpt-engineering"
+homepage = "https://github.com/tpt-solutions/tpt-engineering"
+
+[dependencies]
+# tpt-math-units / tpt-math-numeric are kept as explicit versions with
+# `default-features = false`: `workspace = true` + `default-features = false` is
+# rejected by cargo (it cannot override an inherited default-features), which
+# would break these no_std-capable crates. See Phase 7.2 / todo.md 7.2.
+tpt-math-units = { version = "0.1.0", default-features = false }
+tpt-math-numeric = { version = "0.1.0", default-features = false, features = ["libm"] }
+
+[features]
+default = ["std"]
+std = ["tpt-math-units/std", "tpt-math-numeric/std"]
+alloc = ["tpt-math-units/alloc", "tpt-math-numeric/alloc"]
+
+[lints]
+rust = { unsafe_op_in_unsafe_fn = "warn", unsafe_code = "forbid" }
+clippy = { all = "warn", missing_errors_doc = "warn", missing_panics_doc = "warn" }

@@ -1,0 +1,26 @@
+[package]
+name = "tpt-fem-dynamic"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+description = "Time integration for tpt-fem: implicit Newmark-beta and explicit central-difference over generic M/C/K."
+repository = "https://github.com/tpt-solutions/tpt-fem"
+homepage = "https://github.com/tpt-solutions/tpt-fem"
+readme = "README.md"
+keywords = ["finite-element", "fem", "dynamics", "time-integration", "newmark"]
+categories = ["science", "mathematics", "simulation"]
+
+[dependencies]
+tpt-fem-sparse = { path = "../tpt-fem-sparse", version = "0.1.0" }
+tpt-fem-assembly = { path = "../tpt-fem-assembly", version = "0.1.0" }
+tpt-fem-mesh = { path = "../tpt-fem-mesh", version = "0.1.0" }
+tpt-fem-elasticity = { path = "../tpt-fem-elasticity", version = "0.1.0" }
+
+[features]
+default = []
+
+[lints]
+rust = { unsafe_op_in_unsafe_fn = "warn" }
+clippy = { all = { level = "warn", priority = -1 }, excessive_precision = "allow", needless_range_loop = "allow", too_many_arguments = "allow" }

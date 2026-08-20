@@ -1,0 +1,57 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/out-gpu-dispatch",
+    "crates/out-gpu-playground",
+    "crates/out-gpu-primitives-benches",
+    "crates/out-gpu-runtime-c",
+    "crates/out-gpu-runtime-py",
+    "crates/tpt-gpu-bench",
+    "crates/tpt-gpu-compiler",
+    "crates/tpt-gpu-doctor",
+    "crates/tpt-gpu-driver-daemon",
+    "crates/tpt-gpu-ir-spec",
+    "crates/tpt-gpu-kernel-optimizer",
+    "crates/tpt-gpu-kernelgen",
+    "crates/tpt-gpu-model-optimizer",
+    "crates/tpt-gpu-model-registry",
+    "crates/tpt-gpu-primitives",
+    "crates/tpt-gpu-runtime",
+    "crates/tpt-gpu-script-cli",
+    "crates/tpt-gpu-script-core",
+    "crates/tpt-gpu-script-format",
+    "crates/tpt-gpu-script-lsp",
+    "crates/tpt-gpu-serve",
+    "crates/tpt-gpu-shared",
+    "crates/tpt-gpu-uir-adapter",
+    "crates/tpt-gpu-vendor-cert",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0 WITH LLVM-exception"
+description = "TPT GPU kernel generator and compiler infrastructure"
+authors = ["TPT Solutions"]
+repository = "https://github.com/tpt-solutions/tpt-gpu"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+clap = { version = "4", features = ["derive"] }
+anyhow = "1"
+libc = "0.2"
+log = "0.4"
+thiserror = "2"
+bytemuck = "1.21"
+chrono = { version = "0.4", features = ["serde"] }
+rand = "0.10"
+memmap2 = "0.9"
+tokio = { version = "1", features = ["full"] }
+tower-lsp = "0.20"
+# tower-lsp 0.20.0 (latest upstream release) pins dashmap ^5 internally, which
+# duplicates the dashmap 6 used directly below in Cargo.lock. Not fixable from
+# this repo until tower-lsp releases an update — do not "fix" by re-pinning.
+dashmap = "6"
+toml = "1.1"
+ureq = { version = "3", features = ["json"] }

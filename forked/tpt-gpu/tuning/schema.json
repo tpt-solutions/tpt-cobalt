@@ -1,0 +1,66 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/tpt-gpu/tpt-gpu/tuning/schema.json",
+  "title": "TPT GPU Profile",
+  "description": "Community-contributed GPU timing profile for TPT-GenBench baselines",
+  "type": "object",
+  "required": ["gpu_model", "vendor", "entries"],
+  "additionalProperties": false,
+  "properties": {
+    "gpu_model": {
+      "type": "string",
+      "description": "GPU model name (spaces replaced with underscores, e.g. RTX_4090)",
+      "minLength": 1
+    },
+    "vendor": {
+      "type": "string",
+      "enum": ["Nvidia", "Amd", "Apple", "Sim"],
+      "description": "GPU vendor"
+    },
+    "driver_version": {
+      "type": ["string", "null"],
+      "description": "Driver version string at time of measurement"
+    },
+    "tpt_version": {
+      "type": ["string", "null"],
+      "description": "TPT GPU version tag used to produce this profile"
+    },
+    "submitted_by": {
+      "type": ["string", "null"],
+      "description": "GitHub username of contributor (optional)"
+    },
+    "entries": {
+      "type": "object",
+      "description": "Map of benchmark case label → timing entry",
+      "additionalProperties": {
+        "$ref": "#/definitions/ProfileEntry"
+      }
+    }
+  },
+  "definitions": {
+    "ProfileEntry": {
+      "type": "object",
+      "required": ["time_ms", "vendor_backend"],
+      "additionalProperties": false,
+      "properties": {
+        "time_ms": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Median execution time in milliseconds"
+        },
+        "gflops": {
+          "type": ["number", "null"],
+          "description": "Measured GFLOPS"
+        },
+        "bandwidth_gbps": {
+          "type": ["number", "null"],
+          "description": "Measured memory bandwidth in GB/s"
+        },
+        "vendor_backend": {
+          "type": "string",
+          "description": "Reference backend used (e.g. cuBLAS, rocBLAS, tpt, sim-estimate)"
+        }
+      }
+    }
+  }
+}

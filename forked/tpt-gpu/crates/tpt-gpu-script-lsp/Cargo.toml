@@ -1,0 +1,24 @@
+[package]
+name = "tpt-gpu-script-lsp"
+version = "0.1.0"
+edition = "2021"
+authors = ["TPT Solutions"]
+description = "TPT Script Language Server Protocol implementation"
+license = "MIT OR Apache-2.0 WITH LLVM-exception"
+repository = "https://github.com/tpt-solutions/tpt-gpu"
+documentation = "https://docs.rs/tpt-gpu-script-lsp"
+readme = "README.md"
+keywords = ["gpu", "compiler", "ml", "ai", "tptscript"]
+categories = ["compilers", "development-tools"]
+
+[[bin]]
+name = "tpt-gpu-lsp"
+path = "src/main.rs"
+
+[dependencies]
+tpt-gpu-script-core = { path = "../tpt-gpu-script-core", version = "0.1.0" }
+tpt-gpu-script-format = { path = "../tpt-gpu-script-format", version = "0.1.0" }
+tokio = { version = "1", features = ["full"] }
+tower-lsp = { version = "0.20" }
+dashmap = { version = "6" }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tptr"
+version = "0.1.0"
+description = "TPT Framework Backends - Python thin wrapper over Rust GPU runtime"
+license = {text = "Apache-2.0"}
+requires-python = ">=3.8"
+dependencies = []
+
+[project.optional-dependencies]
+  pytorch = ["torch>=1.12", "numpy>=1.21"]
+jax = ["jax>=0.4", "jaxlib>=0.4"]
+dev = ["pytest>=7", "black", "mypy"]
+
+[tool.setuptools.packages.find]
+include = ["tptr*"]
+

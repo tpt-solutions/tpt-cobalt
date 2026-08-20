@@ -1,0 +1,16 @@
+[package]
+name = "tpt-uir-dialects"
+version = "0.1.0"
+edition = "2021"
+description = "TPT-UIR dialect definitions (GPU, Crucible, Memory) and analysis passes"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+repository = "https://github.com/tpt-solutions/tpt-uir"
+homepage = "https://github.com/tpt-solutions/tpt-uir"
+documentation = "https://docs.rs/tpt-uir-dialects"
+keywords = ["uir", "ir", "dialect", "compiler", "ssa"]
+categories = ["compilers"]
+readme = "README.md"
+
+[dependencies]
+tpt-uir-core = { path = "../tpt-uir-core", version = "0.1.0" }

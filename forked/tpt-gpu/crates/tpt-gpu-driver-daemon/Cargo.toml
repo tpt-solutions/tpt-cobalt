@@ -1,0 +1,36 @@
+[package]
+name    = "tpt-gpu-driver-daemon"
+version = "0.1.0"
+edition = "2021"
+description = "TPT GPU userspace daemon — context management and VRAM isolation"
+license = "MIT OR Apache-2.0 WITH LLVM-exception"
+authors = ["TPT Solutions"]
+repository = "https://github.com/tpt-solutions/tpt-gpu"
+readme = "README.md"
+keywords = ["gpu", "daemon", "driver", "vram", "compute"]
+categories = ["hardware-support", "os::linux-apis"]
+
+[[bin]]
+name = "tpt-gpu-daemon"
+path = "src/main.rs"
+
+[lib]
+name = "tpt_gpu_driver_daemon"
+path = "src/lib.rs"
+
+[dependencies]
+# Async runtime
+tokio      = { version = "1", features = ["full"] }
+# JSON protocol
+serde      = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Error handling
+anyhow     = "1"
+# Logging
+tracing            = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+# Memory-mapped I/O
+memmap2 = "0.9"
+
+[dev-dependencies]
+tokio-test = "0.4"

@@ -1,0 +1,802 @@
+TPT Cobalt: Unified Computational Substrate — Design Document (v3)
+Status: Revised Architecture (Fork & Internalize Strategy + Runtime/Tooling/System Layers)
+Project: TPT Cobalt
+Strategy: Fork 9 Existing Repos + 5 Glue Crates from tpt-rust6 into Single Workspace
+License: MIT OR Apache-2.0 (all constituent repos)
+1. Executive Summary
+TPT Cobalt is the unifying workspace that transforms TPT Solutions' existing nine-pillar Rust ecosystem into a single, coherent, PyTorch-replacing computational substrate.
+The modern AI/ML stack (Python + PyTorch + C++/CUDA) is a bloated, long-winded farce of overlapping abstractions, GIL contention, and fragile FFI boundaries. TPT Cobalt eliminates this farce by:
+Forking the nine existing pillar repositories into a single workspace as first-party crates, free to diverge and be optimized for Cobalt's unified tensor/autograd requirements.
+Building five targeted glue crates (tpt-tensor, tpt-autograd, tpt-ml, tpt-hub, tpt-runtime) starting from pre-existing implementations in tpt-rust6 rather than from scratch.
+Defining the language runtime, tooling, and system layer that complete the computational substrate.
+Enforcing strict dependency flow so the entire stack shares a single Tensor type, a single autograd tape, and a single execution runtime.
+Keeping both lines alive: The original tpt-solutions/* repos remain independently maintained standalone products. Cobalt's forked copies are optimized for the unified stack. Two product lines by design.
+The result is a framework where a neural network, a finite-element solver, a quantum simulator, and a photonic accelerator compiler all speak the same language — with compile-time unit safety, formal verification, and zero Python in the critical path.
+2. Core Design Principles
+These principles are non-negotiable. Any architectural decision that violates them must be rejected.
+Forked & Optimized, Not Shared. Cobalt copies the nine pillar repos into its own workspace as independent, first-party crates, free to diverge and be optimized for Cobalt's needs (shared tensor type, shared autograd tape, GPU-first layouts, etc.). The original nine repos remain live and independently maintained for standalone use — they are a separate product line, not a dependency Cobalt tracks. There are now two lines of each pillar by design: the standalone repo, and the Cobalt-internal fork. They are allowed to drift apart.
+Single Tensor Type. Every layer — from tpt-math matrices to tpt-physics FEA fields to tpt-gpu LLM inference — operates on the same tpt-tensor::Tensor.
+Single Autograd Tape. Neural nets, ODE solvers, FEA, and DEM share the same reverse-mode gradient tape. Differentiate through reality, not just x @ w + b.
+Compile-Time Unit Safety. Dimension mismatches are rejected by the compiler, not discovered at runtime.
+Formal Verification by Default. tpt-telos proves memory bounds and invariant preservation across the entire stack.
+Hardware Agnosticism. A model written once compiles to GPU, FPGA, photonic mesh, neuromorphic chip, or MCU swarm via tpt-crucible.
+No GIL, No CPython, No PyO3 in the Critical Path. Python is an optional ingestion format (via Catalyst), never a runtime dependency.
+Functional Core, Dynamic Surface. The engine is pure and immutable; the scripting surface is ergonomic and mutable.
+First-Class Tensors in the Runtime. Tensors are native values in the language runtime, not boxed afterthoughts. The Value enum has a dedicated Tensor variant with zero indirection.
+Eager by Default, Compiled When It Matters. The REPL and notebooks execute eagerly for fast iteration. The @compile decorator traces and optimizes hot paths. No forced graph mode.
+3. Repo Strategy — Fork, Optimize, Keep Both Lines Alive
+Why a clean fork beats git dependencies here
+The alternative (treating the 9 repos as external git dependencies pinned in Cargo.toml, kept "unmodified") works fine until a glue crate needs to change something upstream of a pillar's public API — which Phase 3 explicitly requires (tpt-physics and tpt-science need to consume tpt-tensor internally, not just at their boundary). At that point you have three bad options with git deps:
+Fork silently and diverge (defeats the point of tracking upstream)
+Upstream every change and wait on 9 separate repos to cut releases before Cobalt can build
+Pin to a commit hash and accept the repos are already forked in practice, just without saying so
+The decision: fork openly, optimize freely inside Cobalt, and let the standalone repos keep shipping independently for people who just want tpt-fem or tpt-physics on their own. Two maintained lines instead of one canonical one — more honest about what's actually happening than a git dependency pretending nothing changed, and it doesn't force standalone users onto Cobalt's release cadence or its GPU-tensor-shaped opinions.
+One-way fork — no sync policy needed
+Since the fork is one-way (Cobalt's copies and the standalone repos have independent cadences, full stop), there's no ongoing cherry-pick process to design or staff. UPSTREAM.md still records the fork-point commit per crate — useful provenance, and a starting point if anyone ever wants to diff how far things have drifted — but it's a historical marker, not a queue of pending merges. If a specific upstream fix is ever worth pulling into Cobalt, that's a deliberate one-off decision made at the time, not a scheduled process.
+What this looks like
+
+tpt-cobalt/
+├── Cargo.toml                       # Single workspace, ALL crates as path deps
+├── forked/                          # Cobalt's own optimized copies
+│   ├── tpt-math/                    # Forked from tpt-solutions/tpt-math, free to diverge
+│   ├── tpt-gpu/
+│   ├── tpt-crucible/
+│   ├── tpt-fem/
+│   ├── tpt-physics/
+│   ├── tpt-engineering/
+│   ├── tpt-science/
+│   ├── tpt-formal/
+│   └── tpt-telos/
+│
+├── crates/                          # The 5 glue crates (starting from tpt-rust6)
+│   ├── tpt-tensor/                  # Started from tpt-rust6::tpt-omni
+│   ├── tpt-autograd/                # Started from tpt-rust6::tpt-grad
+│   ├── tpt-ml/                      # Started from tpt-rust6::tpt-learn
+│   ├── tpt-hub/                     # Started from tpt-rust6::tpt-io + tpt-crucible::Catalyst
+│   └── tpt-runtime/                 # New (elevates tpt-gpu-runtime)
+│
+├── UPSTREAM.md                      # Source commit each fork started from
+├── examples/
+├── tests/
+└── docs/
+
+Naming note: Called forked/ rather than vendor/ deliberately — "vendor" implies a frozen, upgrade-when-convenient snapshot (how Rust/Go typically use the term). Here the standalone repos keep moving too, so forked/ is the more honest name for "our own copy, diverging on purpose."
+Root Cargo.toml
+
+[workspace]
+resolver = "2"
+members = [
+    "crates/*",
+    "forked/*",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+
+[workspace.dependencies]
+# Glue crates
+tpt-tensor    = { path = "crates/tpt-tensor" }
+tpt-autograd  = { path = "crates/tpt-autograd" }
+tpt-ml        = { path = "crates/tpt-ml" }
+tpt-hub       = { path = "crates/tpt-hub" }
+tpt-runtime   = { path = "crates/tpt-runtime" }
+
+# Forked pillars — Cobalt's own copies, path deps. One version, one lockfile, one build.
+# The tpt-solutions/* originals keep shipping independently; these are not synced automatically.
+tpt-math          = { path = "forked/tpt-math" }
+tpt-gpu-script    = { path = "forked/tpt-gpu", package = "tpt-gpu-script-core" }
+tpt-gpu-compiler  = { path = "forked/tpt-gpu", package = "tpt-gpu-compiler" }
+tpt-gpu-runtime   = { path = "forked/tpt-gpu", package = "tpt-gpu-runtime" }
+tpt-crucible-catalyst = { path = "forked/tpt-crucible", package = "tpt-catalyst" }
+tpt-fem           = { path = "forked/tpt-fem" }
+tpt-physics       = { path = "forked/tpt-physics" }
+tpt-science       = { path = "forked/tpt-science" }
+tpt-engineering   = { path = "forked/tpt-engineering" }
+tpt-formal        = { path = "forked/tpt-formal" }
+tpt-telos         = { path = "forked/tpt-telos" }
+tpt-telos-uir-bridge = { path = "forked/tpt-telos", package = "tpt-telos-uir-bridge" }
+
+This one change also fixes the cargo build --workspace success criterion from Section 15 — with forked/* as workspace members, a single build genuinely covers the whole stack, including tpt-physics/tpt-science post-refactor.
+UPSTREAM.md — tracking two live lines without losing track of either
+
+| Forked crate   | Source repo (independently maintained, own cadence) | Forked at commit | Diverged how |
+|---|---|---|---|
+| tpt-math       | tpt-solutions/tpt-math     | a1b2c3d | Minimal so far — mostly boundary adapters |
+| tpt-physics    | tpt-solutions/tpt-physics  | e4f5a6b | Internals refactored onto tpt-tensor, Phase 3 |
+| tpt-science    | tpt-solutions/tpt-science  | 9c8d7e6 | Same |
+| tpt-crucible   | tpt-solutions/tpt-crucible | 1122334 | Pending — Fusion backend to absorb tpt-silicon, Phase 5 |
+
+This is provenance, not a to-do list — it answers "where did this fork start" if anyone needs to understand a difference later, without implying an obligation to keep reconciling.
+4. The Nine Existing Pillars (Forked)
+These repositories are forked into forked/ and serve as the foundation. They are optimized for Cobalt's unified stack but the originals remain independently maintained.
+
+#
+Repository
+Role
+Key Crates / Features
+1
+tpt-math
+Immutable numeric substrate
+linalg (dense/sparse/complex/fixed), autodiff (fwd+rev), units (compile-time SI), exact, geometry, spatial, prob, stats, optimize, signal, symbolic, interpolate, graph
+2
+tpt-gpu
+AI-native language & GPU execution
+tpt-gpu-script (statically typed, ~200 orthogonal ops, shape inference), tpt-gpu-compiler (TPT-IR), tpt-gpu-runtime (3-tier allocator, priority scheduler), tpt-gpu-primitives (GEMM/Attention/Conv), LLM inference engine, LSP, playground
+3
+tpt-crucible
+Hardware-agnostic compiler
+Catalyst (GGUF/ONNX/PyTorch/TF/SafeTensors/EXL2/AWQ/JAX/TFLite ingestion), Alloy (MCU swarms), Fusion (FPGA), Element (analog), Photon (photonic MZI), Pulse (neuromorphic SNN), Silicon (CIM), Observer, Mosaic
+4
+tpt-fem
+Finite Element Method core
+quadrature, element, mesh, sparse, assembly, thermal, elasticity, solve (Newton-Raphson, arc-length), eigen, mesh-gen (native 3D tet), I/O (VTK/Abaqus/Exodus)
+5
+tpt-physics
+Differentiable physics simulation
+core (materials, CAD ingestion), solver (CG, GMRES, GPU dispatch), fea (Tet10, nonlinear Tet4, J2 plasticity, shells), dem (Hertz-Mindlin, >100k particles), cfd (LBM D2Q9), ai (Gymnasium-like differentiable RL environments)
+6
+tpt-engineering
+Applied engineering primitives (43 crates)
+Fluid properties (IAPWS-IF97, ASHRAE), timeseries, infrastructure topology, controls (PID/state-space), structural, materials, sections, tolerance, GD&T, reliability, NURBS/CAD, electrical, heat transfer, PCB, renewables, vehicle dynamics, biomech, geotech, building systems, scheduling
+7
+tpt-science
+Advanced scientific simulation
+ode (Tsit45, TrBdf2, Esdirk34, BDF 1-5, Cranelift JIT RHS), grid (structured PDE), sim-core (multi-scale orchestration), ppl (NUTS probabilistic programming), image (CT reconstruction), physics-rigid, quantum (state-vector ≤20 qubits), astro, reaction-network
+8
+tpt-formal
+Formal verification primitives
+typestate, assert-const, contract (pre/post/invariant), witness, refinement, verified-algorithms, verified-ode, smt-lite, proof-ast, det-proptest, deterministic-sim, redundancy, model-check, sat (from-scratch CDCL), vcgen, abstract-interp, symbolic-exec, runtime-verify
+9
+tpt-telos
+Verification-first language & UIR prover
+Parser/IR/verifier/router/agent/codegen pipeline, Fourier-Motzkin SMT core (optional Z3), Rust+Go+Python codegen with FFI bridge, LSP, SDK, tpt-telos-uir-bridge (proves TPT-UIR memory allocations fit hardware budgets)
+5. The Five New Glue Crates (Built in Cobalt, Starting from tpt-rust6)
+These are the only new code written in the Cobalt umbrella. They provide the missing unifying abstractions, starting from pre-existing implementations in tpt-rust6 rather than from scratch.
+5.1. tpt-tensor — The Universal Tensor
+Starting point: tpt-rust6::tpt-omni (Arrow-backed unified layout, zero-copy views — already implemented)
+A single, device-agnostic, zero-copy tensor type that every other crate consumes.
+
+pub struct Tensor {
+    pub(crate) meta: TensorMeta,
+    pub(crate) storage: Arc<dyn Storage>,
+    pub(crate) autograd: Option<Arc<AutogradNode>>,
+}
+
+pub struct TensorMeta {
+    pub shape: Shape,
+    pub strides: Strides,
+    pub dtype: DType,
+    pub device: Device,
+    pub layout: Layout,
+    pub version: u64,  // for in-place mutation tracking in autograd
+}
+
+pub trait Storage: Send + Sync {
+    fn device(&self) -> Device;
+    fn dtype(&self) -> DType;
+    fn byte_len(&self) -> usize;
+    fn as_bytes(&self) -> &[u8];
+}
+
+Key features:
+Zero-copy views (reshape, transpose, slice only modify metadata)
+Copy-on-write storage via Arc
+Bridges tpt-math-linalg (CPU math) with tpt-gpu-primitives (GPU kernels) and tpt-crucible (exotic hardware)
+First-class citizen in tpt-gpu-script
+Arrow-backed for zero-copy interop with data loaders
+5.2. tpt-autograd — The Tensor-Graph Tape
+Starting point: tpt-rust6::tpt-grad (proc-macro autograd, compile-time gradient emission — already implemented)
+A tensor-aware reverse-mode autodiff engine built on tpt-math-autodiff-rev.
+Responsibilities:
+Dynamic (eager) and traced (compiled) graph execution
+Vector-Jacobian Product (VJP) registration for custom ops (including tpt-physics solvers)
+Gradient checkpointing (activation recomputation for VRAM-constrained training)
+Cross-device gradient accumulation
+In-place mutation versioning (invalidates tape on illegal mutation)
+Why this matters: tpt-physics-ai currently exposes differentiable state, but there is no unified tape shared with neural networks. tpt-autograd makes it possible to backpropagate through an FEA solve and a transformer layer in the same graph.
+5.3. tpt-ml — The Standard ML API
+Starting point: tpt-rust6::tpt-learn (high-level ML training, compile-time shape verification — already implemented)
+The bread-and-butter of modern AI.
+Contents:
+nn: Linear, Conv1d/2d/3d, LayerNorm, BatchNorm, Embedding, MultiHeadAttention, TransformerBlock, Module trait, parameter initialization
+optim: SGD, AdamW, learning rate schedulers
+loss: MSE, CrossEntropy, NLL, Huber, BCE
+data: Dataset trait, DataLoader (multi-threaded, Arrow-backed), standard transforms
+Depends on: tpt-tensor, tpt-autograd, tpt-math-linalg
+5.4. tpt-hub — Model Loading & Interop
+Starting point: tpt-rust6::tpt-io (universal format reader: CSV/JSON/Parquet/Arrow-IPC/HDF5 — already implemented) + tpt-crucible's Catalyst for the ONNX/GGUF/SafeTensors ingestion paths tpt-io doesn't cover
+Seamless ingestion of the world's existing model ecosystem.
+Contents:
+SafeTensors loader (direct into tpt-tensor)
+ONNX importer (via tpt-crucible Catalyst → TPT-IR → tpt-tensor)
+GGUF loader (via tpt-gpu model registry)
+HuggingFace Hub client
+PyTorch .pt / .bin converter (one-way, via Catalyst)
+Export to SafeTensors / ONNX
+Universal data format reader (CSV/JSON/Parquet/Arrow-IPC/HDF5) from tpt-io
+5.5. tpt-runtime — The Unified Execution Orchestrator
+Starting point: Elevates tpt-gpu-runtime into a cross-backend orchestrator (new work)
+Responsibilities:
+Unified kernel dispatch across CPU / WGPU / CUDA / ROCm / Metal / FPGA / Photonic / MCU
+Asynchronous stream management (compute + copy stream overlap)
+Memory pooling with liveness-aware buffer reuse (informed by tpt-compiler memory planning)
+Pinned memory management for zero-copy host↔device transfers
+Cross-device synchronization barriers
+Integration with tpt-telos-uir-bridge for formal memory-bound proofs
+6. The Language Runtime
+The language runtime is the execution engine for TPT Script. It provides the dynamic value model, execution modes, and object model that make the language feel Python-like while maintaining Rust-level performance.
+Starting point: tpt-rust6::tpt-script (Pythonic scripting layer — already implemented), adapted for Cobalt's tensor-first semantics.
+6.1. Dynamic Value Model
+The runtime Value enum represents all possible values in TPT Script. Tensors are first-class, not boxed through a generic object system.
+
+pub enum Value {
+    None,
+    Bool(bool),
+    Int(i64),
+    Float(f64),
+    Str(Arc<str>),
+    List(Gc<RefCell<Vec<Value>>>),
+    Dict(Gc<RefCell<HashMap<String, Value>>>),
+    Tuple(Arc<[Value]>),
+    Tensor(Tensor),              // Native, zero indirection
+    Function(Arc<Function>),
+    Module(Arc<Module>),
+    Unit(Arc<UnitValue>),        // Compile-time unit-aware values
+}
+
+Key design decisions:
+Tensor is a direct variant, not Box<dyn Any>. This eliminates runtime type checks and indirection for the most common operation.
+Unit values carry dimensional metadata (meters, seconds, etc.) that the type checker validates at compile time.
+Collections (List, Dict) use garbage-collected references for cyclic structure support.
+Function and Module are reference-counted for sharing across the runtime.
+6.2. Execution Modes
+TPT Script supports three execution modes, selected per-function or per-expression:
+
+pub enum ExecutionMode {
+    /// REPL / notebook mode: interpret directly, no compilation
+    /// Fast startup, slow execution, full introspection
+    Eager,
+    
+    /// @compile decorator: trace execution into IR, optimize, cache
+    /// Slow first call, fast subsequent calls, limited introspection
+    Traced,
+    
+    /// Ahead-of-time compilation to native code
+    /// Slow compilation, fastest execution, no introspection
+    Compiled,
+}
+
+How they work:
+Eager mode (default for REPL):
+Parser → AST → interpreter
+Each operation executes immediately
+Full error messages with source locations
+No optimization, no fusion
+Used for exploration, debugging, small scripts
+Traced mode (@compile decorator):
+Parser → AST → tracer → IR graph → optimizer → cached compiled artifact
+First call traces execution, builds IR, runs compiler passes
+Subsequent calls execute the optimized graph
+Limited introspection (can't print intermediate values without breaking the graph)
+Used for training loops, hot paths, production inference
+Compiled mode (future):
+Parser → AST → compiler → native code (via Cranelift or LLVM)
+No runtime overhead, but no dynamic behavior
+Used for deployment to resource-constrained targets
+6.3. Object Model
+TPT Script's object model is minimal by design:
+
+pub struct Module {
+    pub name: String,
+    pub attrs: HashMap<String, Value>,
+    pub doc: Option<String>,
+}
+
+pub struct Function {
+    pub name: String,
+    pub params: Vec<Parameter>,
+    pub body: AstNode,
+    pub mode: ExecutionMode,
+    pub compiled_cache: RwLock<Option<CompiledGraph>>,
+}
+
+pub struct Parameter {
+    pub name: String,
+    pub ty: Option<TypeAnnotation>,
+    pub default: Option<Value>,
+}
+
+What's not in the object model:
+No classes (use modules + functions instead)
+No inheritance (use composition)
+No metaclasses (no need)
+No descriptors (too complex for the use case)
+Why this matters: A minimal object model means the runtime is simple, fast, and easy to reason about. Most ML code doesn't need classes — it needs functions that operate on tensors.
+6.4. Type System
+TPT Script is statically typed with gradual typing:
+
+pub enum Type {
+    None,
+    Bool,
+    Int,
+    Float,
+    Str,
+    Tensor { shape: ShapeInference, dtype: DType, device: Device },
+    List(Box<Type>),
+    Dict(Box<Type>, Box<Type>),
+    Function { params: Vec<Type>, ret: Box<Type> },
+    Unit(Dimension),
+    Any,  // Escape hatch for dynamic code
+}
+
+Key features:
+Tensor shape inference: The compiler tracks shapes through operations and rejects mismatches at compile time.
+Unit checking: Dimensional analysis is enforced statically.
+Gradual typing: You can annotate types where you want safety, leave them off where you want flexibility.
+No runtime type checks: If it compiles, it's type-safe. No isinstance checks in the hot path.
+6.5. Integration with the Stack
+The language runtime integrates with the rest of the stack as follows:
+
+tpt-gpu-script (parser, type checker)
+    ↓
+Language Runtime (Value enum, execution modes)
+    ↓
+tpt-tensor (tensor operations)
+    ↓
+tpt-autograd (gradient tracking)
+    ↓
+tpt-runtime (kernel dispatch)
+
+The runtime is the bridge between the user-facing language and the underlying computational engine. It translates high-level operations into tensor ops, manages the autograd tape, and dispatches to the appropriate backend.
+7. Tooling Architecture
+The tooling layer provides the interactive development experience: REPL, notebooks, and IDE integration. This is what makes TPT Cobalt feel like a modern development environment, not just a compiler.
+7.1. REPL (Read-Eval-Print Loop)
+Starting point: tpt-gpu-script-cli (existing REPL implementation), enhanced with tensor-aware pretty-printing.
+
+pub struct Repl {
+    history: History,
+    env: Environment,
+    printer: TensorPrinter,
+}
+
+impl Repl {
+    pub fn eval(&mut self, input: &str) -> Result<Value, Error> {
+        let ast = parse(input)?;
+        let value = self.env.eval(&ast)?;
+        self.printer.print(&value);
+        Ok(value)
+    }
+}
+
+Features:
+Line editing: Arrow keys, history, search (via rustyline)
+Multi-line input: Detect incomplete expressions, allow continuation
+Tensor pretty-printing: Show shape, dtype, device, requires_grad
+Async execution: Long-running operations (training loops) don't block the REPL
+Introspection: dir(), type(), help() work on all values
+Magic commands: %time, %load, %save, %debug
+Example session:
+
+> x = randn(3, 4, device="cuda")
+Tensor(shape=[3, 4], dtype=f32, device=cuda, requires_grad=false)
+
+> y = x @ x.T
+Tensor(shape=[3, 3], dtype=f32, device=cuda, requires_grad=false)
+
+> y.mean()
+Tensor(0.0123, dtype=f32, device=cuda)
+
+7.2. Notebook Kernel
+Starting point: New implementation, Jupyter protocol adapter.
+
+pub struct NotebookKernel {
+    session: Session,
+    env: Environment,
+}
+
+impl NotebookKernel {
+    pub fn execute_cell(&mut self, code: &str) -> CellResult {
+        let ast = parse(code)?;
+        let value = self.env.eval(&ast)?;
+        CellResult {
+            outputs: vec![Output::Display(self.format(&value))],
+            metadata: Metadata::default(),
+        }
+    }
+}
+
+Features:
+Jupyter protocol: Full implementation of the Jupyter messaging protocol
+Cell state: Variables persist across cells within a session
+Rich display: Tensors render as interactive HTML tables (via tpt-gpu-playground)
+Interrupt support: Ctrl-C interrupts long-running cells
+Autocomplete: Tab completion for variables, functions, tensor methods
+Magic commands: %matplotlib, %timeit, %debug
+Integration:
+VS Code: Native Jupyter support via the kernel
+JupyterLab: Register as a kernel spec
+Standalone: tpt notebook launches a local Jupyter server
+7.3. Language Server Protocol (LSP)
+Starting point: tpt-gpu-script-lsp (existing LSP implementation), enhanced with tensor-aware diagnostics.
+
+pub struct LanguageServer {
+    workspace: Workspace,
+    compiler: Compiler,
+}
+
+impl LanguageServer {
+    pub fn on_completion(&self, pos: Position) -> Vec<CompletionItem> {
+        // Tensor-aware completions: suggest valid operations based on shape/dtype
+        let tensor_type = self.infer_type_at(pos)?;
+        self.suggest_operations(&tensor_type)
+    }
+    
+    pub fn on_hover(&self, pos: Position) -> Option<Hover> {
+        // Show tensor shape, dtype, device on hover
+        let value = self.eval_at(pos)?;
+        Some(Hover { contents: self.format(&value) })
+    }
+    
+    pub fn on_diagnostic(&self) -> Vec<Diagnostic> {
+        // Shape mismatches, unit errors, type errors
+        self.compiler.check_workspace()
+    }
+}
+
+Features:
+Completions: Variables, functions, tensor methods, module attributes
+Hover: Type information, tensor metadata, documentation
+Diagnostics: Shape mismatches, unit errors, type errors, unused variables
+Go-to-definition: Jump to function/module definitions
+Find references: Find all uses of a variable/function
+Rename: Safe renaming across the workspace
+Formatting: Auto-format code according to style guide
+Integration:
+VS Code: vscode-tpt extension (already exists in tpt-gpu)
+Neovim: nvim-lspconfig setup
+Helix: languages.toml configuration
+Emacs: lsp-mode configuration
+7.4. Profiler & Debugger
+Profiler:
+
+pub struct Profiler {
+    trace: Vec<TraceEvent>,
+}
+
+impl Profiler {
+    pub fn start(&mut self) { /* Begin tracing */ }
+    pub fn stop(&mut self) -> TraceReport { /* Generate report */ }
+}
+
+Features:
+Op-level timing: Time spent in each tensor operation
+Memory profiling: Allocation patterns, peak memory usage
+GPU utilization: Kernel execution time, memory transfers
+Flame graphs: Visualize call stacks
+Integration: Chrome Trace Event format, compatible with chrome://tracing
+Debugger:
+
+pub struct Debugger {
+    breakpoints: Vec<Breakpoint>,
+    env: Environment,
+}
+
+impl Debugger {
+    pub fn step(&mut self) -> StepResult { /* Single-step execution */ }
+    pub fn continue_exec(&mut self) -> StepResult { /* Run to next breakpoint */ }
+    pub fn inspect(&self, var: &str) -> Value { /* Inspect variable */ }
+}
+
+Features:
+Breakpoints: Line breakpoints, conditional breakpoints
+Stepping: Step over, step into, step out
+Watch expressions: Evaluate expressions in the current context
+Tensor inspection: View tensor data, shape, dtype, device
+Integration: DAP (Debug Adapter Protocol) for IDE integration
+8. System Layer
+The system layer provides the low-level infrastructure: memory management, inter-process communication, and serialization. This is what makes TPT Cobalt performant and production-ready.
+8.1. Memory Allocator
+Starting point: tpt-gpu-runtime (existing 3-tier allocator), unified across all backends.
+
+pub struct Allocator {
+    slab: SlabAllocator,        // Fast, small allocations (< 1MB)
+    buddy: BuddyAllocator,      // Medium, fragmented allocations (1MB - 1GB)
+    fallback: SystemAllocator,  // Large, rare allocations (> 1GB)
+}
+
+impl Allocator {
+    pub fn allocate(&mut self, size: usize) -> Result<Buffer, AllocError> {
+        if size < SLAB_THRESHOLD {
+            self.slab.allocate(size)
+        } else if size < BUDDY_THRESHOLD {
+            self.buddy.allocate(size)
+        } else {
+            self.fallback.allocate(size)
+        }
+    }
+    
+    pub fn deallocate(&mut self, buffer: Buffer) {
+        // Route to the appropriate tier based on size
+    }
+}
+
+Features:
+Three-tier hierarchy:
+Slab allocator: Pre-allocated blocks, O(1) allocation/deallocation, minimal fragmentation
+Buddy allocator: Power-of-two blocks, O(log n) allocation, moderate fragmentation
+System allocator: mmap / VirtualAlloc, O(n) allocation, no fragmentation
+Memory pooling: Reuse buffers for tensors whose lifetimes don't overlap
+Pinned memory: Page-locked host memory for zero-copy CPU↔GPU transfers
+Device-aware: Separate allocators for CPU, GPU, FPGA, etc.
+Thread-safe: Lock-free allocation for hot paths
+Integration with tpt-runtime:
+The runtime queries the compiler's memory planning pass to determine buffer lifetimes
+Buffers are allocated from the pool and returned when no longer needed
+Peak memory usage is tracked and reported
+8.2. Inter-Process Communication (IPC)
+TPT Cobalt supports sharing tensors across processes for distributed training and inference.
+
+pub trait SharedTensor {
+    fn share(&self) -> SharedMemoryHandle;
+    fn from_handle(handle: SharedMemoryHandle) -> Self;
+}
+
+pub struct SharedMemoryHandle {
+    id: String,
+    size: usize,
+    device: Device,
+}
+
+Features:
+Shared memory: Tensors can be shared across processes via OS shared memory
+Zero-copy: No data duplication, just handle passing
+Cross-device: Share CPU tensors, GPU tensors, even FPGA buffers
+Reference counting: Handles are reference-counted, memory is freed when last handle drops
+Security: Handles are capability-based, can't be forged
+Use cases:
+Distributed training: Share model parameters across workers
+Data loading: Preprocess data in separate processes, share with training loop
+Inference serving: Load model once, serve multiple requests
+Implementation:
+Linux: shm_open + mmap
+macOS: shm_open + mmap
+Windows: CreateFileMapping + MapViewOfFile
+GPU: CUDA IPC handles (cudaIpcGetMemHandle)
+8.3. Serialization
+TPT Cobalt supports multiple serialization formats for different use cases.
+
+pub trait TensorSerde {
+    fn serialize(&self) -> Result<Vec<u8>, SerdeError>;
+    fn deserialize(bytes: &[u8]) -> Result<Self, SerdeError>;
+}
+
+Formats:
+SafeTensors (default for models):
+Zero-copy loading
+Memory-mapped files
+Compatible with HuggingFace ecosystem
+Used by tpt-hub for model checkpoints
+Arrow IPC (default for data):
+Columnar format
+Zero-copy reads
+Compatible with Pandas, Polars, DuckDB
+Used by tpt-ml::data::DataLoader
+Custom binary (default for checkpoints):
+Compact representation
+Fast serialization/deserialization
+Includes autograd tape state
+Used for resuming training
+JSON (for debugging):
+Human-readable
+Slow, large files
+Used for inspecting tensor contents
+Features:
+Versioning: Format versions are tracked, old files can be migrated
+Compression: Optional LZ4/Zstd compression for large tensors
+Checksums: CRC32 checksums to detect corruption
+Streaming: Serialize/deserialize large tensors without loading into memory
+8.4. Streams & Synchronization
+Modern hardware (GPUs, FPGAs) is asynchronous. The system layer manages streams and synchronization.
+
+pub struct Stream {
+    id: StreamId,
+    device: Device,
+    queue: CommandQueue,
+}
+
+impl Stream {
+    pub fn submit(&mut self, kernel: Kernel) -> Result<(), SubmitError> {
+        self.queue.submit(kernel)
+    }
+    
+    pub fn synchronize(&mut self) -> Result<(), SyncError> {
+        self.queue.synchronize()
+    }
+}
+
+Features:
+Multiple streams: Overlap compute and data transfers
+Dependencies: Explicit dependencies between streams
+Events: Synchronize across streams
+Priority: High-priority streams preempt low-priority ones
+Integration with tpt-runtime:
+The runtime creates a default stream for each device
+Users can create additional streams for parallelism
+The autograd tape tracks stream dependencies to ensure correct execution order
+9. The Unified Architecture
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ L7: Tooling                                                                  │
+│     REPL • Notebook Kernel • LSP • Profiler • Debugger                       │
+├──────────────────────────────────────────────────────────────────────────────┤
+│ L6: Language Runtime                                                         │
+│     Value enum • Execution modes (Eager/Traced/Compiled) • Object model      │
+├──────────────────────────────────────────────────────────────────────────────┤
+│ L5: Domain Applications                                                      │
+│     tpt-engineering (43 crates) • tpt-science (ODE/PDE/quantum/astro)        │
+├──────────────────────────────────────────────────────────────────────────────┤
+│ L4: Differentiable Physics & Simulation                                      │
+│     tpt-physics (FEA/DEM/CFD + RL) • tpt-fem (FEM core)                      │
+├──────────────────────────────────────────────────────────────────────────────┤
+│ L3: Machine Learning API                                                     │
+│     tpt-ml (nn, optim, loss, data) • tpt-hub (Safetensors/ONNX/GGUF)         │
+├──────────────────────────────────────────────────────────────────────────────┤
+│ L2: The Core Engine                                                          │
+│     tpt-tensor (universal tensor)                                            │
+│     tpt-autograd (tensor-graph tape, checkpointing, custom VJPs)             │
+│     tpt-runtime (cross-backend orchestrator, memory pooling, streams)        │
+├──────────────────────────────────────────────────────────────────────────────┤
+│ L1: Compiler & IR                                                            │
+│     tpt-gpu-compiler (TPT-IR, fusion, codegen)                               │
+│     tpt-crucible (Catalyst ingestion + exotic hardware backends)             │
+├──────────────────────────────────────────────────────────────────────────────┤
+│ L0: Mathematical & Formal Substrate                                          │
+│     tpt-math (linalg, autodiff, units, exact, optimize, signal, prob)        │
+│     tpt-formal (contracts, SMT-lite, SAT, symbolic exec, model checking)     │
+│     tpt-telos (verification-first language + UIR memory prover)              │
+├──────────────────────────────────────────────────────────────────────────────┤
+│ L-1: System Layer                                                            │
+│     Allocator (slab/buddy/fallback) • IPC (shared memory) • Serde • Streams  │
+├──────────────────────────────────────────────────────────────────────────────┤
+│ L-2: Hardware Backends                                                       │
+│     CPU/SIMD • WGPU • CUDA • ROCm • Metal • FPGA • Photonic • SNN • MCU      │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+
+Strict Dependency Flow
+
+Language Runtime     → tpt-tensor, tpt-autograd
+Tooling              → Language Runtime, tpt-tensor
+tpt-tensor           → tpt-math, System Layer
+tpt-autograd         → tpt-tensor, tpt-math-autodiff-rev
+tpt-ml               → tpt-tensor, tpt-autograd, tpt-math-linalg
+tpt-hub              → tpt-tensor, tpt-crucible-catalyst, tpt-gpu-model-registry
+tpt-runtime          → tpt-tensor, tpt-gpu-runtime, tpt-crucible-drivers, System Layer
+
+tpt-physics          → tpt-tensor, tpt-autograd, tpt-fem, tpt-math
+tpt-science          → tpt-tensor, tpt-autograd, tpt-math
+tpt-engineering      → tpt-math
+
+tpt-gpu-script       → Language Runtime, tpt-tensor, tpt-math-units, tpt-ir
+tpt-telos-uir-bridge → tpt-ir (proves memory bounds of compiled graphs)
+
+10. The Four Killer Features
+These are capabilities that PyTorch, JAX, and Mojo cannot replicate without fundamental rewrites.
+10.1. Compile-Time Unit Safety
+# TPT Script
+let velocity = 10.0 * (meter / second)
+let distance = 5.0 * meter
+# let bad = velocity + distance   # 🚫 COMPILE ERROR: [L T^-1] vs [L]
+let time = distance / velocity    # ✅ Compiles: [T]
+
+Powered by tpt-math-units. No runtime overhead. No silent garbage.
+10.2. Formally Verified Compilation
+tpt-telos-uir-bridge consumes a compiled TPT-UIR graph and mathematically proves:
+"For all possible input shapes within the declared bounds, every memory allocation in every scope fits within the target hardware's physical memory budget."
+If the proof fails, it returns a concrete counterexample. No more silent OOM crashes in production.
+10.3. Differentiable Physics, Not Just Neural Nets
+
+# TPT Script — train a neural net through a finite-element solve
+@compile
+def loss(net_params, mesh, loads):
+    displacement = fem_solve(mesh, loads, material=net_params)
+    return mse(displacement, target_displacement)
+
+loss.backward()  # gradients flow through Newton-Raphson FEA
+
+Powered by tpt-autograd + tpt-physics + tpt-fem. Unlocks PINNs, differentiable simulators, and physics-informed RL on the same tape as standard deep learning.
+10.4. True Hardware Agnosticism
+
+# Write once, target anywhere
+@deploy(target="cuda")
+@deploy(target="fpga")
+@deploy(target="photonic")
+@deploy(target="mcu_swarm")
+def model(x):
+    return (x @ w1 + b1).relu() @ w2 + b2
+
+tpt-crucible retargets the same TPT-IR graph to NVIDIA GPUs, Xilinx FPGAs, photonic MZI meshes, neuromorphic SNNs, or ESP32 swarms — without changing the source.
+11. Execution Flow: End-to-End
+How a training step actually runs in TPT Cobalt:
+Parse — tpt-gpu-script parses source into AST with tensor shape + unit inference.
+Runtime — Language runtime creates Value objects, manages execution mode.
+Trace — tpt-autograd records tensor ops into a reverse-mode tape.
+Lower — Tape is converted to tpt-ir graph.
+Verify — tpt-telos-uir-bridge proves memory bounds for the target device.
+Optimize — tpt-gpu-compiler runs fusion, DCE, memory planning passes.
+Dispatch — tpt-runtime routes kernels to the correct backend (CUDA/WGPU/FPGA/…).
+Execute — Forward pass runs; activations saved for backward.
+Backward — tpt-autograd replays VJPs in reverse, including through any tpt-physics or tpt-science ops in the graph.
+Update — tpt-ml::optim::AdamW applies gradients to parameters.
+Return — Loss scalar returned to the REPL/notebook.
+12. Roadmap (19 Months)
+Phase 0: Fork & Baseline (Month 1) — new phase
+Copy all 9 repos into forked/, record source commits in UPSTREAM.md
+Get cargo build --workspace green with zero code changes (prove the umbrella compiles before touching anything)
+Write down the fork point for each pillar in UPSTREAM.md (commit hash, date) — the only record you'll want later, since there's no sync process to design
+Deliverable: a working, unmodified monorepo baseline — the safety net every later phase reverts to if something breaks
+Phase 1: The Foundation (Months 2–3)
+Start tpt-tensor from tpt-rust6's tpt-omni (Arrow-backed unified layout, zero-copy views — already implemented) rather than a blank crate; adapt/optimize for Cobalt's device/dtype/autograd requirements
+Start tpt-autograd from tpt-rust6's tpt-grad (proc-macro autograd, compile-time gradient emission — already implemented) rather than building the tape from scratch
+Wire tpt-math-linalg and tpt-gpu-primitives onto the resulting tpt-tensor (boundary-only, no internal rewrites yet)
+Deliverable: CPU tensor ops + autograd, end to end — likely faster than originally scoped given the tpt-rust6 starting point
+Phase 2: The ML API (Months 4–5)
+Start tpt-ml from tpt-rust6's tpt-learn (high-level ML training, compile-time shape verification — already implemented)
+Start tpt-hub from tpt-rust6's tpt-io (universal format reader: CSV/JSON/Parquet/Arrow-IPC/HDF5 — already implemented) plus tpt-crucible's Catalyst for the ONNX/GGUF/SafeTensors ingestion paths tpt-io doesn't cover
+Deliverable: train MNIST and a small transformer in TPT Script
+Phase 3: Physics Internalization (Months 6–8) — extended, was 5–6
+This is the real fork point: refactor vendored tpt-physics and tpt-science internals onto tpt-tensor/tpt-autograd
+Because these are now vendored (not git deps), this can proceed incrementally with the rest of the workspace always building — no waiting on external releases
+Deliverable: backprop through FEA, DEM, and ODE solvers; PINN training demo
+Phase 4: The Runtime & System Layer (Months 9–11) — split from GPU bring-up
+Build tpt-runtime (dispatch, streams, memory pooling)
+Implement System Layer: 3-tier allocator, IPC (shared memory), serialization (SafeTensors, Arrow IPC)
+WGPU backend, end to end
+Deliverable: cross-device execution working on at least one non-CPU backend
+Phase 5: CUDA & Exotic Hardware (Months 12–15) — split out, was folded into old Phase 4/5
+CUDA backend (cuBLAS/cuDNN) — treated as its own milestone, not a bullet
+Wire tpt-telos-uir-bridge into the compiler pipeline for memory-bound proofs
+Evaluate absorbing tpt-silicon into tpt-crucible's Fusion backend for actual FPGA bitstream generation (currently undefined in the original doc)
+Evaluate absorbing tpt-basestation into tpt-crucible's Alloy backend for MCU flashing/OTA (currently just says "targets ESP32 swarms" with no deployment mechanism)
+Deliverable: LLM inference at parity with tpt-gpu's existing engine; formally verified memory bounds on a real model; FPGA deploy path with an actual toolchain behind it
+Phase 6: Language Runtime & Tooling (Months 16–17)
+Build Language Runtime: Value enum, execution modes (Eager/Traced/Compiled), object model
+Build REPL: line editing, tensor pretty-printing, async execution
+Build Notebook Kernel: Jupyter protocol, cell state, rich display
+Enhance LSP: tensor-aware completions, hover, diagnostics
+Build Profiler & Debugger: op-level timing, breakpoints, tensor inspection
+Deliverable: production-ready interactive development environment
+Phase 7: Ecosystem & Polish (Months 18–19)
+Docs, tutorials, PyTorch benchmark suite
+Community outreach, examples, case studies
+Deliverable: production-ready 1.0
+Net change: 14 months → ~19 months, with explicit phases for System Layer (Phase 4) and Language Runtime/Tooling (Phase 6). This is a more honest timeline for what's actually being asked.
+13. What This Is NOT
+To be explicit about scope:
+Not a Python clone. TPT Script is Python-inspired, not Python-compatible. We do not replicate CPython semantics.
+Not a PyTorch clone. We do not replicate PyTorch's dispatcher, autograd quirks, or eager/graph duality. We unify them.
+Is a monorepo for Cobalt's purposes, without retiring the originals. The nine pillar repos are forked into tpt-cobalt as Cobalt's own optimized copies — not tracked as external dependencies, free to diverge. The tpt-solutions/* originals remain independently maintained products in their own right; they are not deprecated, and Cobalt's changes are not obligated to flow back into them. Anyone using tpt-fem or tpt-physics standalone keeps getting a maintained repo — just not necessarily the same internals Cobalt is running.
+Not a research project. Every pillar is already built and tested. Cobalt is integration, not invention.
+
+
+15. Success Criteria
+TPT Cobalt is successful when:
+A user can write a neural network in TPT Script, train it on GPU, and deploy it to an FPGA — all without touching Python.
+A physicist can backpropagate through a nonlinear FEA solve with the same ergonomics as backpropagating through a Linear layer.
+The compiler can prove, before execution, that a model will fit in the target device's memory.
+A unit mismatch (e.g., adding meters to seconds) is a compile error, not a silent bug.
+The entire stack builds with cargo build --workspace from the umbrella repo, with zero C/C++ FFI in the critical path.
+A user can interactively explore data in the REPL, train a model in a notebook, and debug it with breakpoints — all with tensor-aware tooling.
+Tensors can be shared across processes for distributed training with zero-copy semantics.
+Memory allocation is fast, fragmentation-free, and device-aware.
+16. Conclusion
+TPT Cobalt is the missing keystone. The nine existing pillars are world-class. The five new glue crates — starting from tpt-rust6's pre-existing implementations — are well-scoped. The language runtime, tooling, and system layer complete the computational substrate.
+Together, they form a framework that makes the Python/PyTorch/C++ farce look like what it is: a legacy compromise that no longer needs to exist.
+We are not building PyTorch in Rust. We are building what PyTorch should have been if it had been designed in 2026 with modern systems programming, formal verification, hardware diversity, and interactive development in mind.
+
+
+
+

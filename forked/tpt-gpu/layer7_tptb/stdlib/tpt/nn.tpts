@@ -1,0 +1,389 @@
+// tpt/nn.tpts — TPT Script Standard Library: Neural Network Layers
+//
+// Provides composable layer functions built on tpt.* primitives.
+// All GPU-bound layers are annotated @requires_gpu(true).
+// Weights and biases are passed explicitly (no hidden state).
+//
+// Usage: import tpt.nn
+
+import tpt
+
+// ---------------------------------------------------------------------------
+// Linear / Dense
+// ---------------------------------------------------------------------------
+
+@doc("Fully-connected linear transformation: y = x @ weight.T + bias")
+@input("x:      Tensor[f32, *, *]", description="Input: [batch, in_features]")
+@input("weight: Tensor[f32, *, *]", description="Weight matrix: [out_features, in_features]")
+@input("bias:   Tensor[f32, *]",    description="Bias vector: [out_features] (pass zeros to omit)")
+@output("Tensor[f32, *, *]", description="Output: [batch, out_features]")
+@constraint("x.shape[1] == weight.shape[1]", error="in_features must match weight columns")
+@requires_gpu(true)
+@differentiable(true)
+@complexity("O(batch * in_features * out_features)")
+fn linear(x: Tensor[f32, *, *], weight: Tensor[f32, *, *], bias: Tensor[f32, *]) -> Tensor[f32, *, *] {
+    let out = tpt.broadcast_add(tpt.matmul_2d(x, tpt.transpose_last2(weight)), bias)
+    return out
+}
+
+// ---------------------------------------------------------------------------
+// Embedding
+// ---------------------------------------------------------------------------
+
+@doc("Embedding lookup: map integer indices to dense vectors.")
+@input("indices: Tensor[i64, *]",   description="Integer token indices: [batch] or [batch, seq]")
+@input("weight:  Tensor[f32, *, *]", description="Embedding table: [vocab_size, embed_dim]")
+@output("Tensor[f32, *, *]", description="Embedded vectors: [..., embed_dim]")
+@requires_gpu(true)
+@differentiable(true)
+@complexity("O(batch * embed_dim)")
+fn embedding(indices: Tensor[i64, *], weight: Tensor[f32, *, *]) -> Tensor[f32, *, *] {
+    let out = tpt.gather(weight, dim=0, index=indices)
+    return out
+}
+
+// ---------------------------------------------------------------------------
+// Layer Normalisation
+// ---------------------------------------------------------------------------
+
+@doc("Layer normalisation over the last dimension: (x - mean) / sqrt(var + eps) * gamma + beta")
+@input("x:     Tensor[f32, *, *]", description="Input: [batch, features] or [*, features]")
+@input("gamma: Tensor[f32, *]",    description="Learned scale: [features]")
+@input("beta:  Tensor[f32, *]",    description="Learned shift: [features]")
+@input("eps:   f32",               description="Numerical stability term (default 1e-5)")
+@output("Tensor[f32, *, *]", description="Normalised tensor, same shape as x")
+@requires_gpu(true)
+@differentiable(true)
+@complexity("O(batch * features)")
+fn layer_norm(x: Tensor[f32, *, *], gamma: Tensor[f32, *], beta: Tensor[f32, *], eps: f32) -> Tensor[f32, *, *] {
+    let mean = tpt.mean(x, dim=-1, keepdim=true)
+    let diff = tpt.sub(x, mean)
+    let var  = tpt.mean(tpt.mul(diff, diff), dim=-1, keepdim=true)
+    let norm = tpt.div(diff, tpt.sqrt(tpt.add_scalar(var, eps)))
+    let out  = tpt.broadcast_add(tpt.broadcast_mul(norm, gamma), beta)
+    return out
+}
+
+// ---------------------------------------------------------------------------
+// Batch Normalisation (inference mode)
+// ---------------------------------------------------------------------------
+
+@doc("Batch normalisation using pre-computed running statistics (inference mode).")
+@input("x:           Tensor[f32, *, *, *, *]", description="Input: [N, C, H, W]")
+@input("gamma:       Tensor[f32, *]",           description="Learned scale: [C]")
+@input("beta:        Tensor[f32, *]",           description="Learned shift: [C]")
+@input("running_mean: Tensor[f32, *]",          description="Running mean: [C]")
+@input("running_var:  Tensor[f32, *]",          description="Running variance: [C]")
+@input("eps:         f32",                      description="Numerical stability (default 1e-5)")
+@output("Tensor[f32, *, *, *, *]", description="Normalised output: [N, C, H, W]")
+@requires_gpu(true)
+@differentiable(true)
+@complexity("O(N * C * H * W)")
+fn batch_norm(x:            Tensor[f32, *, *, *, *],
+              gamma:        Tensor[f32, *],
+              beta:         Tensor[f32, *],
+              running_mean: Tensor[f32, *],
+              running_var:  Tensor[f32, *],
+              eps:          f32) -> Tensor[f32, *, *, *, *] {
+    // Reshape running stats for broadcasting: [1, C, 1, 1]
+    let mean_r = tpt.reshape(running_mean, [1, tpt.shape(running_mean)[0], 1, 1])
+    let var_r  = tpt.reshape(running_var,  [1, tpt.shape(running_var)[0],  1, 1])
+    let g_r    = tpt.reshape(gamma, [1, tpt.shape(gamma)[0], 1, 1])
+    let b_r    = tpt.reshape(beta,  [1, tpt.shape(beta)[0],  1, 1])
+    let norm   = tpt.div(tpt.sub(x, mean_r), tpt.sqrt(tpt.add_scalar(var_r, eps)))
+    let out    = tpt.broadcast_add(tpt.broadcast_mul(norm, g_r), b_r)
+    return out
+}
+
+// ---------------------------------------------------------------------------
+// Group Normalisation
+// ---------------------------------------------------------------------------
+
+@doc("Group normalisation: split channels into groups, normalise each group independently.")
+@input("x:          Tensor[f32, *, *, *, *]", description="Input: [N, C, H, W]")
+@input("num_groups: i64",                     description="Number of channel groups (must divide C)")
+@input("gamma:      Tensor[f32, *]",          description="Learned scale: [C]")
+@input("beta:       Tensor[f32, *]",          description="Learned shift: [C]")
+@input("eps:        f32",                     description="Numerical stability (default 1e-5)")
+@output("Tensor[f32, *, *, *, *]", description="Normalised output: [N, C, H, W]")
+@requires_gpu(true)
+@differentiable(true)
+@complexity("O(N * C * H * W)")
+fn group_norm(x:         Tensor[f32, *, *, *, *],
+              num_groups: i64,
+              gamma:      Tensor[f32, *],
+              beta:       Tensor[f32, *],
+              eps:        f32) -> Tensor[f32, *, *, *, *] {
+    let n = tpt.shape(x)[0]
+    let c = tpt.shape(x)[1]
+    let h = tpt.shape(x)[2]
+    let w = tpt.shape(x)[3]
+    // Reshape to [N, G, C/G, H, W] for group-wise normalisation
+    let xg     = tpt.reshape(x, [n, num_groups, c / num_groups, h, w])
+    let mean   = tpt.mean(xg, dim=2, keepdim=true)
+    let diff   = tpt.sub(xg, mean)
+    let var    = tpt.mean(tpt.mul(diff, diff), dim=2, keepdim=true)
+    let norm   = tpt.div(diff, tpt.sqrt(tpt.add_scalar(var, eps)))
+    let norm   = tpt.reshape(norm, [n, c, h, w])
+    let g_r    = tpt.reshape(gamma, [1, c, 1, 1])
+    let b_r    = tpt.reshape(beta,  [1, c, 1, 1])
+    let out    = tpt.broadcast_add(tpt.broadcast_mul(norm, g_r), b_r)
+    return out
+}
+
+// ---------------------------------------------------------------------------
+// Root Mean Square Normalisation (RMSNorm — used in LLaMA)
+// ---------------------------------------------------------------------------
+
+@doc("RMSNorm: x / rms(x) * gamma  (no centring, cheaper than LayerNorm)")
+@input("x:     Tensor[f32, *, *]", description="Input: [batch, features]")
+@input("gamma: Tensor[f32, *]",    description="Learned scale: [features]")
+@input("eps:   f32",               description="Numerical stability (default 1e-6)")
+@output("Tensor[f32, *, *]", description="RMS-normalised tensor")
+@requires_gpu(true)
+@differentiable(true)
+@complexity("O(batch * features)")
+fn rms_norm(x: Tensor[f32, *, *], gamma: Tensor[f32, *], eps: f32) -> Tensor[f32, *, *] {
+    let rms  = tpt.sqrt(tpt.add_scalar(tpt.mean(tpt.mul(x, x), dim=-1, keepdim=true), eps))
+    let norm = tpt.div(x, rms)
+    let out  = tpt.broadcast_mul(norm, gamma)
+    return out
+}
+
+// ---------------------------------------------------------------------------
+// Dropout
+// ---------------------------------------------------------------------------
+
+@doc("Apply dropout regularisation during training.")
+@input("x:        Tensor[f32, *, *]", description="Input tensor (any shape)")
+@input("p:        f32",               description="Probability of zeroing each element [0, 1)")
+@input("training: bool",              description="Only apply dropout when true")
+@output("Tensor[f32, *, *]", description="Masked tensor, scaled to preserve expectation")
+@requires_gpu(true)
+@differentiable(true)
+@complexity("O(numel(x))")
+fn dropout(x: Tensor[f32, *, *], p: f32, training: bool) -> Tensor[f32, *, *] {
+    let out = tpt.dropout(x, p=p, training=training)
+    return out
+}
+
+// ---------------------------------------------------------------------------
+// Scaled Dot-Product Attention
+// ---------------------------------------------------------------------------
+
+@doc("Scaled dot-product attention: softmax(Q @ K.T / sqrt(d_k) + mask) @ V")
+@input("q:    Tensor[f32, *, *, *, *]", description="Query:  [batch, heads, seq_q, d_k]")
+@input("k:    Tensor[f32, *, *, *, *]", description="Key:    [batch, heads, seq_k, d_k]")
+@input("v:    Tensor[f32, *, *, *, *]", description="Value:  [batch, heads, seq_k, d_v]")
+@input("mask: Tensor[f32, *, *]",       description="Additive mask: [seq_q, seq_k] (use 0 / -inf)")
+@output("Tensor[f32, *, *, *, *]", description="Attention output: [batch, heads, seq_q, d_v]")
+@constraint("q.shape[3] == k.shape[3]", error="Query and key d_k must match")
+@requires_gpu(true)
+@differentiable(true)
+@complexity("O(batch * heads * seq_q * seq_k * d_k)")
+fn scaled_dot_product_attention(q:    Tensor[f32, *, *, *, *],
+                                 k:    Tensor[f32, *, *, *, *],
+                                 v:    Tensor[f32, *, *, *, *],
+                                 mask: Tensor[f32, *, *]) -> Tensor[f32, *, *, *, *] {
+    let d_k     = tpt.cast(tpt.shape(q)[3], dtype=f32)
+    let scale   = 1.0 / tpt.sqrt(d_k)
+    let scores  = tpt.matmul(q, tpt.transpose_last2(k))
+    let scores  = tpt.mul_scalar(scores, scale)
+    let scores  = tpt.broadcast_add(scores, mask)
+    let weights = tpt.softmax(scores, dim=-1)
+    let out     = tpt.matmul(weights, v)
+    return out
+}
+
+// ---------------------------------------------------------------------------
+// Multi-Head Attention
+// ---------------------------------------------------------------------------
+
+@doc("Multi-head self-attention with learned Q / K / V / output projections.")
+@input("x:       Tensor[f32, *, *, *]", description="Input tokens: [batch, seq, d_model]")
+@input("w_q:     Tensor[f32, *, *]",    description="Query projection:  [d_model, d_model]")
+@input("w_k:     Tensor[f32, *, *]",    description="Key projection:    [d_model, d_model]")
+@input("w_v:     Tensor[f32, *, *]",    description="Value projection:  [d_model, d_model]")
+@input("w_o:     Tensor[f32, *, *]",    description="Output projection: [d_model, d_model]")
+@input("mask:    Tensor[f32, *, *]",    description="Additive causal or padding mask: [seq, seq]")
+@input("n_heads: i64",                  description="Number of attention heads (must divide d_model)")
+@output("Tensor[f32, *, *, *]", description="Attention output: [batch, seq, d_model]")
+@requires_gpu(true)
+@differentiable(true)
+@complexity("O(batch * seq² * d_model)")
+fn multi_head_attention(x:       Tensor[f32, *, *, *],
+                         w_q:     Tensor[f32, *, *],
+                         w_k:     Tensor[f32, *, *],
+                         w_v:     Tensor[f32, *, *],
+                         w_o:     Tensor[f32, *, *],
+                         mask:    Tensor[f32, *, *],
+                         n_heads: i64) -> Tensor[f32, *, *, *] {
+    let batch    = tpt.shape(x)[0]
+    let seq      = tpt.shape(x)[1]
+    let d_model  = tpt.shape(x)[2]
+    let head_dim = d_model / n_heads
+
+    let x_flat = tpt.reshape(x, [batch * seq, d_model])
+    let q = tpt.reshape(tpt.matmul_2d(x_flat, tpt.transpose_last2(w_q)), [batch, seq, n_heads, head_dim])
+    let k = tpt.reshape(tpt.matmul_2d(x_flat, tpt.transpose_last2(w_k)), [batch, seq, n_heads, head_dim])
+    let v = tpt.reshape(tpt.matmul_2d(x_flat, tpt.transpose_last2(w_v)), [batch, seq, n_heads, head_dim])
+
+    let q = tpt.transpose(q, dim0=1, dim1=2)
+    let k = tpt.transpose(k, dim0=1, dim1=2)
+    let v = tpt.transpose(v, dim0=1, dim1=2)
+
+    let ctx = scaled_dot_product_attention(q, k, v, mask)
+    let ctx = tpt.transpose(ctx, dim0=1, dim1=2)
+    let ctx = tpt.reshape(ctx, [batch, seq, n_heads * head_dim])
+    let out = tpt.matmul_2d(ctx, tpt.transpose_last2(w_o))
+    return out
+}
+
+// ---------------------------------------------------------------------------
+// Feed-Forward Network (GELU variant — standard in GPT-style models)
+// ---------------------------------------------------------------------------
+
+@doc("Two-layer FFN with GELU activation: GELU(x @ W1.T + b1) @ W2.T + b2")
+@input("x:  Tensor[f32, *, *]", description="Input: [batch_or_seq, d_model]")
+@input("w1: Tensor[f32, *, *]", description="Expansion weight: [d_ff, d_model]")
+@input("b1: Tensor[f32, *]",    description="Expansion bias: [d_ff]")
+@input("w2: Tensor[f32, *, *]", description="Projection weight: [d_model, d_ff]")
+@input("b2: Tensor[f32, *]",    description="Projection bias: [d_model]")
+@output("Tensor[f32, *, *]", description="Output: [batch_or_seq, d_model]")
+@requires_gpu(true)
+@differentiable(true)
+@complexity("O(batch * d_model * d_ff)")
+fn feed_forward(x:  Tensor[f32, *, *],
+                w1: Tensor[f32, *, *], b1: Tensor[f32, *],
+                w2: Tensor[f32, *, *], b2: Tensor[f32, *]) -> Tensor[f32, *, *] {
+    let h1  = tpt.broadcast_add(tpt.matmul_2d(x, tpt.transpose_last2(w1)), b1)
+    let h1  = tpt.gelu(h1)
+    let out = tpt.broadcast_add(tpt.matmul_2d(h1, tpt.transpose_last2(w2)), b2)
+    return out
+}
+
+// ---------------------------------------------------------------------------
+// SwiGLU FFN (used in LLaMA / PaLM)
+// ---------------------------------------------------------------------------
+
+@doc("SwiGLU FFN: (SiLU(x @ W_gate.T) * (x @ W_up.T)) @ W_down.T")
+@input("x:      Tensor[f32, *, *]", description="Input: [batch, d_model]")
+@input("w_gate: Tensor[f32, *, *]", description="Gate projection: [d_ff, d_model]")
+@input("w_up:   Tensor[f32, *, *]", description="Up projection: [d_ff, d_model]")
+@input("w_down: Tensor[f32, *, *]", description="Down projection: [d_model, d_ff]")
+@output("Tensor[f32, *, *]", description="Output: [batch, d_model]")
+@requires_gpu(true)
+@differentiable(true)
+@complexity("O(batch * d_model * d_ff)")
+fn swiglu_ffn(x:      Tensor[f32, *, *],
+              w_gate: Tensor[f32, *, *],
+              w_up:   Tensor[f32, *, *],
+              w_down: Tensor[f32, *, *]) -> Tensor[f32, *, *] {
+    let gate = tpt.silu(tpt.matmul_2d(x, tpt.transpose_last2(w_gate)))
+    let up   = tpt.matmul_2d(x, tpt.transpose_last2(w_up))
+    let h    = tpt.mul(gate, up)
+    let out  = tpt.matmul_2d(h, tpt.transpose_last2(w_down))
+    return out
+}
+
+// ---------------------------------------------------------------------------
+// Transformer Block (pre-norm, decoder-style)
+// ---------------------------------------------------------------------------
+
+@doc("Pre-norm transformer decoder block: LayerNorm → MHA → residual → LayerNorm → FFN → residual")
+@input("x:       Tensor[f32, *, *, *]", description="Token embeddings: [batch, seq, d_model]")
+@input("w_q:     Tensor[f32, *, *]",    description="Attention Q weight: [d_model, d_model]")
+@input("w_k:     Tensor[f32, *, *]",    description="Attention K weight: [d_model, d_model]")
+@input("w_v:     Tensor[f32, *, *]",    description="Attention V weight: [d_model, d_model]")
+@input("w_o:     Tensor[f32, *, *]",    description="Attention output weight: [d_model, d_model]")
+@input("mask:    Tensor[f32, *, *]",    description="Causal attention mask: [seq, seq]")
+@input("w_ff1:   Tensor[f32, *, *]",   description="FFN first weight: [d_ff, d_model]")
+@input("b_ff1:   Tensor[f32, *]",      description="FFN first bias: [d_ff]")
+@input("w_ff2:   Tensor[f32, *, *]",   description="FFN second weight: [d_model, d_ff]")
+@input("b_ff2:   Tensor[f32, *]",      description="FFN second bias: [d_model]")
+@input("ln1_g:   Tensor[f32, *]",      description="LayerNorm1 scale: [d_model]")
+@input("ln1_b:   Tensor[f32, *]",      description="LayerNorm1 bias: [d_model]")
+@input("ln2_g:   Tensor[f32, *]",      description="LayerNorm2 scale: [d_model]")
+@input("ln2_b:   Tensor[f32, *]",      description="LayerNorm2 bias: [d_model]")
+@input("n_heads: i64",                  description="Number of attention heads")
+@output("Tensor[f32, *, *, *]", description="Output embeddings: [batch, seq, d_model]")
+@requires_gpu(true)
+@differentiable(true)
+@complexity("O(batch * seq² * d_model + batch * seq * d_model * d_ff)")
+fn transformer_block(x:       Tensor[f32, *, *, *],
+                      w_q:     Tensor[f32, *, *],
+                      w_k:     Tensor[f32, *, *],
+                      w_v:     Tensor[f32, *, *],
+                      w_o:     Tensor[f32, *, *],
+                      mask:    Tensor[f32, *, *],
+                      w_ff1:   Tensor[f32, *, *],
+                      b_ff1:   Tensor[f32, *],
+                      w_ff2:   Tensor[f32, *, *],
+                      b_ff2:   Tensor[f32, *],
+                      ln1_g:   Tensor[f32, *],
+                      ln1_b:   Tensor[f32, *],
+                      ln2_g:   Tensor[f32, *],
+                      ln2_b:   Tensor[f32, *],
+                      n_heads: i64) -> Tensor[f32, *, *, *] {
+    let batch   = tpt.shape(x)[0]
+    let seq     = tpt.shape(x)[1]
+    let d_model = tpt.shape(x)[2]
+
+    // --- Sub-layer 1: pre-norm MHA + residual ---
+    let x_flat   = tpt.reshape(x, [batch * seq, d_model])
+    let normed1  = tpt.reshape(layer_norm(x_flat, ln1_g, ln1_b, 1e-5), [batch, seq, d_model])
+    let attn_out = multi_head_attention(normed1, w_q, w_k, w_v, w_o, mask, n_heads)
+    let x        = tpt.add(x, attn_out)
+
+    // --- Sub-layer 2: pre-norm FFN + residual ---
+    let x_flat2  = tpt.reshape(x, [batch * seq, d_model])
+    let normed2  = layer_norm(x_flat2, ln2_g, ln2_b, 1e-5)
+    let ff_out   = feed_forward(normed2, w_ff1, b_ff1, w_ff2, b_ff2)
+    let ff_out   = tpt.reshape(ff_out, [batch, seq, d_model])
+    let out      = tpt.add(x, ff_out)
+    return out
+}
+
+// ---------------------------------------------------------------------------
+// Convolutional Layer Wrapper (with bias)
+// ---------------------------------------------------------------------------
+
+@doc("2-D convolution layer: conv2d(x, weight) + bias")
+@input("x:       Tensor[f32, *, *, *, *]", description="Input: [N, C_in, H, W]")
+@input("weight:  Tensor[f32, *, *, *, *]", description="Filter bank: [C_out, C_in, Kh, Kw]")
+@input("bias:    Tensor[f32, *]",           description="Bias: [C_out]")
+@input("stride:  [i64, i64]",               description="Stride (default [1, 1])")
+@input("padding: [i64, i64]",               description="Padding (default [0, 0])")
+@output("Tensor[f32, *, *, *, *]", description="Feature maps: [N, C_out, H', W']")
+@requires_gpu(true)
+@differentiable(true)
+@complexity("O(N * C_out * C_in * Kh * Kw * H' * W')")
+fn conv2d(x:       Tensor[f32, *, *, *, *],
+          weight:  Tensor[f32, *, *, *, *],
+          bias:    Tensor[f32, *],
+          stride:  [i64, i64],
+          padding: [i64, i64]) -> Tensor[f32, *, *, *, *] {
+    let y   = tpt.conv2d(x, weight, bias, stride=stride, padding=padding)
+    return y
+}
+
+// ---------------------------------------------------------------------------
+// Max / Average Pooling
+// ---------------------------------------------------------------------------
+
+@doc("2-D pooling layer (max or average).")
+@input("x:      Tensor[f32, *, *, *, *]", description="Input: [N, C, H, W]")
+@input("kernel: [i64, i64]",              description="Pool window size: [Kh, Kw]")
+@input("stride: [i64, i64]",              description="Stride: [Sh, Sw]")
+@input("mode:   [u8]",                    description="Pooling mode: \"max\" or \"avg\"")
+@output("Tensor[f32, *, *, *, *]", description="Pooled output: [N, C, H', W']")
+@requires_gpu(true)
+@differentiable(true)
+@complexity("O(N * C * H' * W' * Kh * Kw)")
+fn pool2d(x:      Tensor[f32, *, *, *, *],
+          kernel: [i64, i64],
+          stride: [i64, i64],
+          mode:   [u8]) -> Tensor[f32, *, *, *, *] {
+    let out = tpt.pool2d(x, kernel=kernel, stride=stride, mode=mode)
+    return out
+}

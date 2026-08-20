@@ -1,0 +1,27 @@
+[package]
+name = "tpt-learn"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.81"
+license = "MIT OR Apache-2.0"
+description = "High-level ML training abstractions with compile-time shape checking"
+
+[dependencies]
+tpt-omni = { path = "../tpt-omni" }
+ndarray = { version = "0.16", features = ["rayon"] }
+rayon = { version = "1" }
+thiserror = { version = "1" }
+serde = { version = "1", features = ["derive"] }
+bincode = "1.3"
+prost = { version = "0.14", optional = true }
+wasm-encoder = { version = "0.255", optional = true }
+
+[dev-dependencies]
+wasmparser = "0.255"
+
+[features]
+default = []
+# Emit an ONNX ModelProto (Gemm + initializers) for `Linear` models.
+onnx = ["dep:prost"]
+# Emit a standalone Wasm inference module for `Linear` models.
+wasm-export = ["dep:wasm-encoder"]

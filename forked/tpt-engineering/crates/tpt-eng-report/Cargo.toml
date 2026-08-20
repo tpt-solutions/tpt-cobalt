@@ -1,0 +1,22 @@
+[package]
+name = "tpt-eng-report"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+repository = "https://github.com/tpt-solutions/tpt-engineering"
+homepage = "https://github.com/tpt-solutions/tpt-engineering"
+rust-version = "1.85"
+description = "Calculation-report data model and exporters (Markdown/HTML/JSON) for the TPT ecosystem."
+readme = "README.md"
+keywords = ["engineering", "report", "markdown", "html", "export"]
+categories = ["science", "visualization", "data-structures"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { version = "2" }
+
+[lints]
+rust = { unsafe_op_in_unsafe_fn = "warn", unsafe_code = "forbid" }
+clippy = { all = "warn", missing_errors_doc = "warn", missing_panics_doc = "warn" }

@@ -1,0 +1,27 @@
+[package]
+name = "tpt-eng-io"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+repository = "https://github.com/tpt-solutions/tpt-engineering"
+homepage = "https://github.com/tpt-solutions/tpt-engineering"
+rust-version = "1.85"
+description = "Engineering file I/O (STL and OBJ meshes) for the TPT ecosystem, built on `tpt-eng-mesh`."
+keywords = ["engineering", "stl", "obj", "mesh", "io"]
+categories = ["science", "graphics", "encoding"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = { workspace = true }
+csv = { version = "1" }
+thiserror = { version = "2" }
+tpt-eng-mesh = { path = "../tpt-eng-mesh", version = "0.1.0" }
+
+[dev-dependencies]
+tempfile = "3.8"
+tpt-eng-geometry = { path = "../tpt-eng-geometry", version = "0.1.0" }
+
+[lints]
+rust = { unsafe_op_in_unsafe_fn = "warn", unsafe_code = "forbid" }
+clippy = { all = "warn", missing_errors_doc = "warn", missing_panics_doc = "warn" }

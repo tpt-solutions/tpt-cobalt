@@ -1,0 +1,23 @@
+[package]
+name = "tpt-for-runtime-verify"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+description = "Runtime verification / temporal-logic monitoring."
+
+readme = "README.md"
+keywords = ["runtime-verification", "temporal-logic", "monitoring", "verification", "observers"]
+categories = ["science", "development-tools::debugging", "rust-patterns"]
+
+[dependencies]
+
+[lints]
+rust = { unsafe_op_in_unsafe_fn = "warn" }
+clippy = { all = "warn" }
+
+[[example]]
+name = "runtime_verify_basic"
+path = "examples/request_ack_monitor.rs"
+

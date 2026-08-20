@@ -1,0 +1,99 @@
+// 01_hello_tensor.tpts — First program in TPT Script.
+//
+// This example shows the fundamental building blocks:
+//   - import
+//   - let bindings
+//   - basic tensor operations
+//   - the GPU/host split via @requires_gpu
+//
+// Compile:  tpt compile 01_hello_tensor.tpts -o out/
+// Check:    tpt check   01_hello_tensor.tpts
+
+import tpt
+
+// ---------------------------------------------------------------------------
+// Element-wise add — GPU kernel
+// ---------------------------------------------------------------------------
+
+@doc("Add two same-shape f32 tensors element-wise.")
+@input("a: Tensor[f32, *]", description="First operand")
+@input("b: Tensor[f32, *]", description="Second operand — must have the same shape as a")
+@output("Tensor[f32, *]", description="Element-wise sum, same shape as a and b")
+@requires_gpu(true)
+@complexity("O(n)")
+fn add(a: Tensor[f32, *], b: Tensor[f32, *]) -> Tensor[f32, *] {
+    let c = tpt.add(a, b)
+    return c
+}
+
+// ---------------------------------------------------------------------------
+// Scale — GPU kernel
+// ---------------------------------------------------------------------------
+
+@doc("Multiply every element of a tensor by a scalar.")
+@input("x: Tensor[f32, *]", description="Input tensor")
+@input("scale: f32", description="Scalar multiplier")
+@output("Tensor[f32, *]", description="Scaled tensor")
+@requires_gpu(true)
+@complexity("O(n)")
+fn scale(x: Tensor[f32, *], scale: f32) -> Tensor[f32, *] {
+    let out = tpt.mul_scalar(x, scale)
+    return out
+}
+
+// ---------------------------------------------------------------------------
+// Dot product — GPU kernel
+// ---------------------------------------------------------------------------
+
+@doc("Compute the dot product of two 1-D f32 vectors.")
+@input("a: Tensor[f32, *]", description="First vector")
+@input("b: Tensor[f32, *]", description="Second vector — must have the same length as a")
+@output("f32", description="Scalar dot product")
+@requires_gpu(true)
+@complexity("O(n)")
+fn dot(a: Tensor[f32, *], b: Tensor[f32, *]) -> f32 {
+    let prod = tpt.mul(a, b)
+    let s    = tpt.sum(prod)
+    return s
+}
+
+// ---------------------------------------------------------------------------
+// normalise — GPU kernel
+// ---------------------------------------------------------------------------
+
+@doc("Normalise a tensor to unit L2 norm.")
+@input("x: Tensor[f32, *]", description="Input tensor")
+@output("Tensor[f32, *]", description="Unit-norm tensor")
+@requires_gpu(true)
+@complexity("O(n)")
+fn normalise(x: Tensor[f32, *]) -> Tensor[f32, *] {
+    let sq   = tpt.mul(x, x)
+    let sum  = tpt.sum(sq)
+    let norm = tpt.sqrt(sum)
+    let out  = tpt.div_scalar(x, norm)
+    return out
+}
+
+// ---------------------------------------------------------------------------
+// Host driver — allocates random tensors and runs the GPU functions
+// ---------------------------------------------------------------------------
+
+@doc("Driver: allocate two random 1-D vectors and run all examples above.")
+@input("n: i64", description="Vector length (must be > 0)")
+@output("f32", description="Dot product of the two vectors (sanity return value)")
+@requires_gpu(false)
+fn run_hello(n: i64) -> f32 {
+    // Allocate on the GPU via the tptr runtime.
+    let a = tpt.randn([n], dtype=f32)
+    let b = tpt.randn([n], dtype=f32)
+
+    // Call GPU kernels — boundary insertion is automatic.
+    let c      = add(a, b)
+    let scaled = scale(c, 0.5)
+    let n_a    = normalise(a)
+    let result = dot(n_a, b)
+
+    // Sync before returning a scalar.
+    tpt.sync()
+    return result
+}

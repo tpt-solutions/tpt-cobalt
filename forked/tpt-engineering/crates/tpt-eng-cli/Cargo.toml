@@ -1,0 +1,35 @@
+[package]
+name = "tpt-eng-cli"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+repository = "https://github.com/tpt-solutions/tpt-engineering"
+homepage = "https://github.com/tpt-solutions/tpt-engineering"
+rust-version = "1.85"
+description = "Command-line front-end for the TPT engineering toolkit: unit conversion, material/section inspection, beam calculations, and file validation."
+readme = "README.md"
+keywords = ["engineering", "cli", "units", "materials", "validation"]
+categories = ["command-line-utilities", "science"]
+
+[dependencies]
+clap = { version = "4.5", features = ["derive", "cargo"] }
+anyhow = { version = "1.0" }
+serde_json = { workspace = true }
+tpt-math-units = { version = "0.1.0" }
+tpt-eng-io = { path = "../tpt-eng-io", version = "0.1.0" }
+tpt-eng-report = { path = "../tpt-eng-report", version = "0.1.0" }
+tpt-eng-plot = { path = "../tpt-eng-plot", version = "0.1.0" }
+tpt-eng-materials = { path = "../tpt-eng-materials", version = "0.1.0" }
+tpt-eng-sections = { path = "../tpt-eng-sections", version = "0.1.0" }
+tpt-eng-structural = { path = "../tpt-eng-structural", version = "0.1.0" }
+tpt-eng-props-water = { path = "../tpt-eng-props-water", version = "0.1.0" }
+tpt-eng-props-air = { path = "../tpt-eng-props-air", version = "0.1.0" }
+tpt-eng-props-fuels = { path = "../tpt-eng-props-fuels", version = "0.1.0" }
+tpt-eng-controls = { path = "../tpt-eng-controls", version = "0.1.0" }
+tpt-eng-tolerance = { path = "../tpt-eng-tolerance", version = "0.1.0" }
+rand = { version = "0.10" }
+
+[lints]
+rust = { unsafe_op_in_unsafe_fn = "warn", unsafe_code = "forbid" }
+clippy = { all = "warn", missing_errors_doc = "warn", missing_panics_doc = "warn" }

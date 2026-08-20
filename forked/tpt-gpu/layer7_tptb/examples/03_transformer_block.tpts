@@ -1,0 +1,241 @@
+// 03_transformer_block.tpts — Encoder transformer block in TPT Script.
+//
+// Implements one decoder-style block:
+//   1. Multi-head causal self-attention (with KV cache for inference)
+//   2. Add + LayerNorm (pre-norm formulation)
+//   3. Feed-forward network (with GELU)
+//   4. Add + LayerNorm
+//
+// The full block runs on the GPU; the host driver handles weight loading.
+
+import tpt
+
+// ---------------------------------------------------------------------------
+// Scaled dot-product attention
+// ---------------------------------------------------------------------------
+
+@doc("Scaled dot-product attention: softmax(Q·Kᵀ / √d_k)·V")
+@input("q: Tensor[f32, *, *, *, *]", description="Queries:  [batch, heads, seq_q, d_k]")
+@input("k: Tensor[f32, *, *, *, *]", description="Keys:     [batch, heads, seq_k, d_k]")
+@input("v: Tensor[f32, *, *, *, *]", description="Values:   [batch, heads, seq_k, d_v]")
+@input("mask: Tensor[f32, *, *]",    description="Additive causal mask: [seq_q, seq_k]")
+@output("Tensor[f32, *, *, *, *]", description="Context vectors: [batch, heads, seq_q, d_v]")
+@requires_gpu(true)
+@complexity("O(batch * heads * seq_q * seq_k * d_k)")
+fn scaled_dot_product_attention(q: Tensor[f32, *, *, *, *],
+                                 k: Tensor[f32, *, *, *, *],
+                                 v: Tensor[f32, *, *, *, *],
+                                 mask: Tensor[f32, *, *]) -> Tensor[f32, *, *, *, *] {
+    let d_k    = tpt.shape(q, dim=3)
+    let scale  = 1.0 / tpt.sqrt(tpt.cast(d_k, dtype=f32))
+
+    // Q · Kᵀ: [batch, heads, seq_q, seq_k]
+    let scores = tpt.matmul(q, tpt.transpose_last2(k))
+    let scores = tpt.mul_scalar(scores, scale)
+
+    // Apply causal mask (−∞ on future positions).
+    let scores = tpt.broadcast_add(scores, mask)
+
+    // Softmax over seq_k.
+    let weights = tpt.softmax(scores, dim=-1)
+
+    // Weighted sum of values.
+    let context = tpt.matmul(weights, v)
+    return context
+}
+
+// ---------------------------------------------------------------------------
+// Multi-head self-attention projection
+// ---------------------------------------------------------------------------
+
+@doc("Multi-head self-attention with learned Q/K/V/O projections.")
+@input("x:     Tensor[f32, *, *, *]", description="Input tokens: [batch, seq, d_model]")
+@input("w_q:   Tensor[f32, *, *]",    description="Q projection: [d_model, n_heads * d_k]")
+@input("w_k:   Tensor[f32, *, *]",    description="K projection: [d_model, n_heads * d_k]")
+@input("w_v:   Tensor[f32, *, *]",    description="V projection: [d_model, n_heads * d_v]")
+@input("w_o:   Tensor[f32, *, *]",    description="O projection: [n_heads * d_v, d_model]")
+@input("mask:  Tensor[f32, *, *]",    description="Causal mask:  [seq, seq]")
+@input("n_heads: i64",                description="Number of attention heads")
+@output("Tensor[f32, *, *, *]", description="Attention output: [batch, seq, d_model]")
+@requires_gpu(true)
+@complexity("O(batch * seq * seq * d_model)")
+fn multi_head_attention(x:       Tensor[f32, *, *, *],
+                         w_q:     Tensor[f32, *, *],
+                         w_k:     Tensor[f32, *, *],
+                         w_v:     Tensor[f32, *, *],
+                         w_o:     Tensor[f32, *, *],
+                         mask:    Tensor[f32, *, *],
+                         n_heads: i64) -> Tensor[f32, *, *, *] {
+    let batch   = tpt.shape(x, dim=0)
+    let seq     = tpt.shape(x, dim=1)
+    let d_model = tpt.shape(x, dim=2)
+    let head_dim = d_model / n_heads
+
+    // Project and split into heads.
+    let q = tpt.reshape(tpt.matmul_2d(x, w_q), [batch, seq, n_heads, head_dim])
+    let k = tpt.reshape(tpt.matmul_2d(x, w_k), [batch, seq, n_heads, head_dim])
+    let v = tpt.reshape(tpt.matmul_2d(x, w_v), [batch, seq, n_heads, head_dim])
+
+    // Transpose to [batch, heads, seq, head_dim].
+    let q = tpt.transpose(q, dim0=1, dim1=2)
+    let k = tpt.transpose(k, dim0=1, dim1=2)
+    let v = tpt.transpose(v, dim0=1, dim1=2)
+
+    // Attend.
+    let ctx = scaled_dot_product_attention(q, k, v, mask)
+
+    // Merge heads and project out.
+    let ctx   = tpt.transpose(ctx, dim0=1, dim1=2)
+    let ctx   = tpt.reshape(ctx, [batch, seq, n_heads * head_dim])
+    let out   = tpt.matmul_2d(ctx, w_o)
+    return out
+}
+
+// ---------------------------------------------------------------------------
+// Layer norm (re-used from example 02)
+// ---------------------------------------------------------------------------
+
+@doc("Layer normalisation over the last dimension.")
+@input("x:     Tensor[f32, *, *]", description="Input: [batch, d]")
+@input("gamma: Tensor[f32, *]",    description="Scale: [d]")
+@input("beta:  Tensor[f32, *]",    description="Shift: [d]")
+@output("Tensor[f32, *, *]", description="Normalised, same shape as x")
+@requires_gpu(true)
+fn layer_norm(x: Tensor[f32, *, *], gamma: Tensor[f32, *], beta: Tensor[f32, *]) -> Tensor[f32, *, *] {
+    let eps   = 1e-5
+    let mean  = tpt.mean(x, dim=-1, keepdim=true)
+    let diff  = tpt.sub(x, mean)
+    let var   = tpt.mean(tpt.mul(diff, diff), dim=-1, keepdim=true)
+    let norm  = tpt.div(diff, tpt.sqrt(tpt.add_scalar(var, eps)))
+    let out   = tpt.broadcast_add(tpt.broadcast_mul(norm, gamma), beta)
+    return out
+}
+
+// ---------------------------------------------------------------------------
+// Feed-forward network (GELU variant)
+// ---------------------------------------------------------------------------
+
+@doc("Two-layer feed-forward block with GELU: GELU(x·W1ᵀ + b1)·W2ᵀ + b2")
+@input("x:  Tensor[f32, *, *]",     description="[batch_or_seq, d_model]")
+@input("w1: Tensor[f32, *, *]",     description="[d_ff, d_model]")
+@input("b1: Tensor[f32, *]",        description="[d_ff]")
+@input("w2: Tensor[f32, *, *]",     description="[d_model, d_ff]")
+@input("b2: Tensor[f32, *]",        description="[d_model]")
+@output("Tensor[f32, *, *]",         description="[batch_or_seq, d_model]")
+@requires_gpu(true)
+fn ffn(x:  Tensor[f32, *, *],
+       w1: Tensor[f32, *, *], b1: Tensor[f32, *],
+       w2: Tensor[f32, *, *], b2: Tensor[f32, *]) -> Tensor[f32, *, *] {
+    let h1   = tpt.broadcast_add(tpt.matmul_2d(x, tpt.transpose(w1)), b1)
+    let c1   = 0.7978845608
+    let c2   = 0.044715
+    let h1c  = tpt.mul(h1, tpt.mul_scalar(tpt.add_scalar(tpt.tanh(
+                   tpt.mul_scalar(tpt.add(h1, tpt.mul_scalar(
+                       tpt.mul(tpt.mul(h1, h1), h1), c2)), c1)), 1.0), 0.5))
+    let out  = tpt.broadcast_add(tpt.matmul_2d(h1c, tpt.transpose(w2)), b2)
+    return out
+}
+
+// ---------------------------------------------------------------------------
+// Full transformer block (pre-norm)
+// ---------------------------------------------------------------------------
+
+@doc("Single pre-norm transformer encoder block.")
+@input("x:        Tensor[f32, *, *, *]", description="Token embeddings: [batch, seq, d_model]")
+@input("attn_wq:  Tensor[f32, *, *]",    description="Attention Q weight")
+@input("attn_wk:  Tensor[f32, *, *]",    description="Attention K weight")
+@input("attn_wv:  Tensor[f32, *, *]",    description="Attention V weight")
+@input("attn_wo:  Tensor[f32, *, *]",    description="Attention output weight")
+@input("mask:     Tensor[f32, *, *]",    description="Causal mask")
+@input("ffn_w1:   Tensor[f32, *, *]",    description="FFN first weight")
+@input("ffn_b1:   Tensor[f32, *]",       description="FFN first bias")
+@input("ffn_w2:   Tensor[f32, *, *]",    description="FFN second weight")
+@input("ffn_b2:   Tensor[f32, *]",       description="FFN second bias")
+@input("ln1_g:    Tensor[f32, *]",       description="LayerNorm1 scale")
+@input("ln1_b:    Tensor[f32, *]",       description="LayerNorm1 bias")
+@input("ln2_g:    Tensor[f32, *]",       description="LayerNorm2 scale")
+@input("ln2_b:    Tensor[f32, *]",       description="LayerNorm2 bias")
+@input("n_heads:  i64",                   description="Number of attention heads")
+@output("Tensor[f32, *, *, *]", description="Output embeddings, same shape as x")
+@requires_gpu(true)
+@complexity("O(batch * seq² * d_model + batch * seq * d_model * d_ff)")
+fn transformer_block(x:        Tensor[f32, *, *, *],
+                      attn_wq:  Tensor[f32, *, *],
+                      attn_wk:  Tensor[f32, *, *],
+                      attn_wv:  Tensor[f32, *, *],
+                      attn_wo:  Tensor[f32, *, *],
+                      mask:     Tensor[f32, *, *],
+                      ffn_w1:   Tensor[f32, *, *],
+                      ffn_b1:   Tensor[f32, *],
+                      ffn_w2:   Tensor[f32, *, *],
+                      ffn_b2:   Tensor[f32, *],
+                      ln1_g:    Tensor[f32, *],
+                      ln1_b:    Tensor[f32, *],
+                      ln2_g:    Tensor[f32, *],
+                      ln2_b:    Tensor[f32, *],
+                      n_heads:  i64) -> Tensor[f32, *, *, *] {
+    let batch = tpt.shape(x, dim=0)
+    let seq   = tpt.shape(x, dim=1)
+
+    // --- Sub-layer 1: pre-norm self-attention + residual ---
+    let x_flat  = tpt.reshape(x, [batch * seq, tpt.shape(x, dim=2)])
+    let ln1_out = tpt.reshape(layer_norm(x_flat, ln1_g, ln1_b), [batch, seq, tpt.shape(x, dim=2)])
+    let attn    = multi_head_attention(ln1_out, attn_wq, attn_wk, attn_wv, attn_wo, mask, n_heads)
+    let x       = tpt.add(x, attn)
+
+    // --- Sub-layer 2: pre-norm FFN + residual ---
+    let x_flat2 = tpt.reshape(x, [batch * seq, tpt.shape(x, dim=2)])
+    let ln2_out = layer_norm(x_flat2, ln2_g, ln2_b)
+    let ff_out  = ffn(ln2_out, ffn_w1, ffn_b1, ffn_w2, ffn_b2)
+    let ff_out3 = tpt.reshape(ff_out, [batch, seq, tpt.shape(x, dim=2)])
+    let out     = tpt.add(x, ff_out3)
+    return out
+}
+
+// ---------------------------------------------------------------------------
+// Host driver
+// ---------------------------------------------------------------------------
+
+@doc("Allocate random weights and run one transformer block forward pass.")
+@input("batch:   i64", description="Batch size")
+@input("seq:     i64", description="Sequence length")
+@input("d_model: i64", description="Model dimension (must be divisible by n_heads)")
+@input("d_ff:    i64", description="Feed-forward dimension")
+@input("n_heads: i64", description="Number of attention heads")
+@output("f32", description="Sum of final output (sanity check)")
+@requires_gpu(false)
+fn run_transformer_example(batch: i64, seq: i64, d_model: i64, d_ff: i64, n_heads: i64) -> f32 {
+    let x       = tpt.randn([batch, seq, d_model], dtype=f32)
+
+    // Attention weights
+    let attn_wq = tpt.randn([d_model, d_model], dtype=f32)
+    let attn_wk = tpt.randn([d_model, d_model], dtype=f32)
+    let attn_wv = tpt.randn([d_model, d_model], dtype=f32)
+    let attn_wo = tpt.randn([d_model, d_model], dtype=f32)
+
+    // Causal mask: lower-triangular, −inf above diagonal
+    let mask    = tpt.causal_mask([seq, seq], dtype=f32)
+
+    // FFN weights
+    let ffn_w1  = tpt.randn([d_ff, d_model],    dtype=f32)
+    let ffn_b1  = tpt.zeros([d_ff],              dtype=f32)
+    let ffn_w2  = tpt.randn([d_model, d_ff],     dtype=f32)
+    let ffn_b2  = tpt.zeros([d_model],            dtype=f32)
+
+    // LayerNorm params
+    let ln1_g   = tpt.ones([d_model],  dtype=f32)
+    let ln1_b   = tpt.zeros([d_model], dtype=f32)
+    let ln2_g   = tpt.ones([d_model],  dtype=f32)
+    let ln2_b   = tpt.zeros([d_model], dtype=f32)
+
+    let out = transformer_block(
+        x,
+        attn_wq, attn_wk, attn_wv, attn_wo, mask,
+        ffn_w1, ffn_b1, ffn_w2, ffn_b2,
+        ln1_g, ln1_b, ln2_g, ln2_b,
+        n_heads,
+    )
+
+    tpt.sync()
+    return tpt.sum(out)
+}

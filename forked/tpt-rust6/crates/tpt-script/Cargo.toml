@@ -1,0 +1,17 @@
+[package]
+name = "tpt-script"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.81"
+license = "MIT OR Apache-2.0"
+description = "Pythonic Rust scripting layer (tpt script, script! macro)"
+
+[dependencies]
+tpt-omni = { path = "../tpt-omni" }
+tpt-io = { path = "../tpt-io" }
+tpt-sym = { path = "../tpt-sym" }
+# tpt-stat / tpt-viz are not declared in [workspace.dependencies], so they are
+# referenced by path (the root manifest is intentionally left untouched).
+tpt-stat = { path = "../tpt-stat" }
+tpt-viz = { path = "../tpt-viz" }
+arrow = { version = "54" }

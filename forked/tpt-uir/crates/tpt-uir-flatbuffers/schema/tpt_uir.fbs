@@ -1,0 +1,150 @@
+// TPT-UIR FlatBuffers schema (zero-copy on-disk / mmap format).
+//
+// This mirrors the postcard/serde IR in `tpt-uir-core` (`Operation`, `Block`,
+// `Region`, `Type`, `Attribute`, `OpName`, `Dimension`, `QuantizationParams`).
+// The generated Rust bindings are checked in under `src/generated/`; they are
+// produced with `flatc` (see `schema/README.md`) and are NOT regenerated in CI.
+//
+// Design notes:
+// - FlatBuffers unions can only hold tables, so scalar attribute payloads
+//   (`i64`, `f64`, `string`) and the `Type`/`Shape`/`OpName`/`Quantization`
+//   payloads are wrapped in small wrapper tables (wrapper-table + union pattern).
+// - `Dimension` is modelled as a single table with a `kind` discriminant plus
+//   the union of fields used by its three variants.
+// - `Type` is a union over `ScalarTypeWrapper`, `TensorType`, and `IndexMarker`.
+
+namespace tpt_uir;
+
+enum ScalarType : byte {
+  I8 = 0,
+  I16 = 1,
+  I32 = 2,
+  I64 = 3,
+  U8 = 4,
+  U16 = 5,
+  U32 = 6,
+  U64 = 7,
+  F16 = 8,
+  F32 = 9,
+  F64 = 10,
+  BF16 = 11,
+  Bool = 12,
+  Q4_0 = 13,
+  Q4_1 = 14,
+  Q8_0 = 15,
+}
+
+enum DimensionKind : byte {
+  Fixed = 0,
+  Symbolic = 1,
+  Bounded = 2,
+}
+
+table Dimension {
+  kind: DimensionKind;
+  size: ulong;       // Fixed
+  symbol: string;    // Symbolic / Bounded
+  max_value: ulong;  // Bounded
+}
+
+table ShapeSpec {
+  dimensions: [Dimension];
+}
+
+table ScalarTypeWrapper {
+  scalar: ScalarType;
+}
+
+table TensorType {
+  dtype: ScalarType;
+  shape: ShapeSpec;  // nullable
+}
+
+table IndexMarker {}
+
+union Type {
+  ScalarTypeWrapper,
+  TensorType,
+  IndexMarker,
+}
+
+table OpName {
+  dialect: string;
+  op: string;
+}
+
+table I64Value {
+  v: long;
+}
+
+table F64Value {
+  v: double;
+}
+
+table StringValue {
+  v: string;
+}
+
+table ShapeValue {
+  shape: ShapeSpec;
+}
+
+table OpNameValue {
+  op_name: OpName;
+}
+
+table QuantizationValue {
+  quant: QuantizationParams;
+}
+
+table TypeValue {
+  type: Type;  // nested union
+}
+
+union AttributeValue {
+  I64Value,
+  F64Value,
+  StringValue,
+  TypeValue,
+  ShapeValue,
+  OpNameValue,
+  QuantizationValue,
+}
+
+table QuantizationParams {
+  block_size: uint;
+  bytes_per_block: uint;
+  num_blocks: uint;
+  has_scales: bool;
+  scales: uint;
+}
+
+table Attribute {
+  key: string;
+  value: AttributeValue;
+}
+
+table BlockArg {
+  value: uint;
+  type: Type;  // nested union
+}
+
+table Operation {
+  id: uint;
+  op_name: OpName;
+  operands: [uint];
+  results: [uint];
+  regions: [Region];
+  attributes: [Attribute];
+}
+
+table Block {
+  arguments: [BlockArg];
+  operations: [Operation];
+}
+
+table Region {
+  blocks: [Block];
+}
+
+root_type Region;

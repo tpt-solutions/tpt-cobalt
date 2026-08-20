@@ -1,0 +1,23 @@
+[package]
+name = "tpt-for-det-proptest"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+description = "Deterministic, seedable property-based testing."
+
+readme = "README.md"
+keywords = ["property-testing", "testing", "deterministic", "quickcheck", "seed"]
+categories = ["development-tools::testing", "rust-patterns"]
+
+[dependencies]
+
+[lints]
+rust = { unsafe_op_in_unsafe_fn = "warn" }
+clippy = { all = "warn" }
+
+[[example]]
+name = "det_proptest_basic"
+path = "examples/clamp_property.rs"
+

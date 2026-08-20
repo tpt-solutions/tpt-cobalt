@@ -1,0 +1,31 @@
+[package]
+name = "tpt-uir-ffi"
+version = "0.1.0"
+edition = "2021"
+description = "C ABI (opaque-handle) for inspecting TPT-UIR regions"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+repository = "https://github.com/tpt-solutions/tpt-uir"
+homepage = "https://github.com/tpt-solutions/tpt-uir"
+documentation = "https://docs.rs/tpt-uir-ffi"
+keywords = ["uir", "ir", "ffi", "c", "no-std"]
+categories = ["external-ffi-bindings", "compilers"]
+readme = "README.md"
+
+[lib]
+crate-type = ["cdylib", "rlib", "staticlib"]
+
+[dependencies]
+tpt-uir-core = { path = "../tpt-uir-core", version = "0.1.0" }
+tpt-uir-serde = { path = "../tpt-uir-serde", version = "0.1.0" }
+libc = "0.2"
+
+[build-dependencies]
+cbindgen = "0.29"
+
+[dev-dependencies]
+tpt-uir-core = { path = "../tpt-uir-core", version = "0.1.0" }
+tpt-uir-serde = { path = "../tpt-uir-serde", version = "0.1.0" }
+
+[features]
+default = []
