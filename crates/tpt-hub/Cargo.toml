@@ -8,3 +8,4 @@ license.workspace = true
 tpt-tensor = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+arrow = { workspace = true }

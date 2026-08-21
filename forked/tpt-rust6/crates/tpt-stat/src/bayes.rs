@@ -2,7 +2,6 @@
 //! chains via Rayon, with a typed [`Posterior`].
 
 use rand::distributions::Distribution as RandDist;
-use rand::rngs::ThreadRng;
 use rand::thread_rng;
 use rand::Rng;
 use rand_distr::{Normal, Uniform};
@@ -130,7 +129,7 @@ pub fn sample_mh(
     init: &[f64],
     proposal_sd: &[f64],
     n_samples: usize,
-    rng: &mut ThreadRng,
+    rng: &mut impl Rng,
 ) -> Chain {
     let dim = init.len();
     let mut current = init.to_vec();
@@ -162,7 +161,7 @@ pub fn sample_hmc(
     n_samples: usize,
     step_size: f64,
     n_leapfrog: usize,
-    rng: &mut ThreadRng,
+    rng: &mut impl Rng,
 ) -> Chain {
     let dim = init.len();
     let mut q = init.to_vec();
@@ -209,17 +208,35 @@ pub fn sample_hmc(
 }
 
 /// Run `n_chains` chains in parallel (each with its own RNG) and combine.
+///
+/// Non-deterministic: each chain's RNG is seeded from the system entropy
+/// source. For reproducible runs use [`sample_parallel_seeded`].
 pub fn sample_parallel(
     log_post: &LogPost,
     inits: &[Vec<f64>],
     method: &Sampler,
     n_samples: usize,
 ) -> Posterior {
+    sample_parallel_seeded(log_post, inits, method, n_samples, rand::thread_rng().gen())
+}
+
+/// Deterministic variant of [`sample_parallel`]: chain `i` is seeded with
+/// `seed + i`, so identical inputs always produce identical draws (stable
+/// statistical gates / regression tests).
+pub fn sample_parallel_seeded(
+    log_post: &LogPost,
+    inits: &[Vec<f64>],
+    method: &Sampler,
+    n_samples: usize,
+    seed: u64,
+) -> Posterior {
+    use rand::SeedableRng;
     let names: Vec<String> = (0..inits[0].len()).map(|i| format!("p{}", i)).collect();
     let chains: Vec<Chain> = inits
         .par_iter()
-        .map(|init| {
-            let mut rng = rand::thread_rng();
+        .enumerate()
+        .map(|(ci, init)| {
+            let mut rng = rand::rngs::StdRng::seed_from_u64(seed.wrapping_add(ci as u64));
             match method {
                 Sampler::MH { proposal_sd } => {
                     sample_mh(log_post, init, proposal_sd, n_samples, &mut rng)
@@ -385,7 +402,7 @@ pub fn sample_nuts(
     n_samples: usize,
     step_size: f64,
     max_depth: usize,
-    rng: &mut ThreadRng,
+    rng: &mut impl Rng,
 ) -> Chain {
     let dim = init.len();
     let normal = Normal::new(0.0, 1.0).unwrap();
@@ -479,16 +496,18 @@ mod tests {
     #[test]
     fn nuts_two_dim_gaussian() {
         // N([0,0], I) — NUTS should match HMC's recovery.
+        // Seeded: this is a reproducible regression gate, not a lottery.
         let target: LogPost = Box::new(|x: &[f64]| -0.5 * x.iter().map(|v| v * v).sum::<f64>());
         let inits = jitter_inits(&[0.0, 0.0], 2);
-        let post = sample_parallel(
+        let post = sample_parallel_seeded(
             &target,
             &inits,
             &Sampler::NUTS {
                 step_size: 0.25,
                 max_depth: 6,
             },
-            1500,
+            3000,
+            42,
         );
         assert!((post.mean("p0")).abs() < 0.2, "mean={}", post.mean("p0"));
         assert!((post.mean("p1")).abs() < 0.2, "mean={}", post.mean("p1"));

@@ -14,6 +14,8 @@
 //! registration for custom ops (FEA/ODE solvers), gradient checkpointing, and
 //! cross-device gradient accumulation.
 
+pub mod accumulate;
+pub use accumulate::GradAccumulator;
 use std::collections::HashSet;
 use std::sync::Arc;
 

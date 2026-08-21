@@ -6,9 +6,17 @@
 //! weights. ONNX/GGUF parsers are deferred (see status note) — SafeTensors is
 //! enough to load/round-trip model state produced by `tpt-ml` and friends.
 
+pub mod arrow_ipc;
+pub mod gguf;
+pub mod ipc;
+pub mod onnx;
 pub mod safetensors;
 pub mod serialize;
 
+pub use arrow_ipc::{load_arrow_ipc, save_arrow_ipc};
+pub use gguf::{save_gguf, GgufFile, GgufTensorInfo, GgufValue};
+pub use onnx::OnnxModel;
+pub use ipc::{available as ipc_available, load as ipc_load, publish as ipc_publish, wait_for as ipc_wait_for};
 pub use safetensors::{HubError, load_safetensors, save_safetensors};
 pub use serialize::{
     TPTB_MAGIC, load_tptb, save_tptb, tensor_from_json_debug, tensor_to_json_debug,

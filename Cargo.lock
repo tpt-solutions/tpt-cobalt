@@ -6671,6 +6671,7 @@ dependencies = [
 name = "tpt-hub"
 version = "0.1.0"
 dependencies = [
+ "arrow",
  "serde",
  "serde_json",
  "tpt-tensor",
