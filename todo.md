@@ -20,7 +20,7 @@ Fork scope decisions locked in:
 
 ## Phase 0: Fork & Baseline
 
-- [ ] Create `forked/` and `crates/` directory structure per spec §3
+- [x] Create `forked/` and `crates/` directory structure per spec §3
 - [x] Fork tpt-math (all ~30 crates; exclude `examples/`, `xtask`, `history/`)
 - [x] Fork tpt-gpu (entire repo, all crate families, layer1–7 docs, tooling)
 - [x] Fork tpt-crucible (`tpt-catalyst`, `tpt-alloy` only; confirm whether
@@ -38,45 +38,66 @@ Fork scope decisions locked in:
       `playground`; confirm `out-telos-wasm` is source not a build artifact)
 - [x] Fork tpt-rust6 subset: `tpt-omni`, `tpt-grad`+`tpt-grad-macro`, `tpt-learn`, `tpt-io`,
       `tpt-script` only
-- [ ] Write root `Cargo.toml` workspace manifest (members, resolver, workspace.package,
+- [x] Write root `Cargo.toml` workspace manifest (members, resolver, workspace.package,
       workspace.dependencies per spec §3)
 - [x] Repoint tpt-physics's `../tpt-math`, `../tpt-fem` relative path deps to the in-workspace
       `forked/tpt-math`, `forked/tpt-fem` locations
 - [x] Create `UPSTREAM.md`: record source repo + commit hash (`git log -1`) per forked crate
-- [ ] `cargo build --workspace` green — **currently FAILS**, see "Build stabilization" section below
+- [x] `cargo build --workspace` green — verified 2026-08-21 (0 errors; only `nom`/`quick-xml` future-incompat warnings)
 - [x] Sanity check: `du -sh forked/` is tens-of-MB, not hundreds (confirms no fuzz/fixture leakage)
 
-## Build stabilization (blocking Phase 0 completion)
+## Build stabilization (blocking Phase 0 completion) — COMPLETE
 
-`cargo build --workspace` currently fails. Known issue so far (more likely once this one is fixed
-and the build gets further):
+`cargo build --workspace` is green (verified 2026-08-21; 0 errors, only `nom`/`quick-xml`
+future-incompat warnings). All drift fixes recorded in the Phase 0 status log below are done.
 
-- [ ] `tpt-phys-orchestrator` (forked/tpt-physics) calls `tpt-sci-sim-core`'s (forked/tpt-science)
-      `Simulation::add_model` / `add_coupling` with an older API shape than what's actually in the
-      forked `tpt-sci-sim-core` — 24 errors (E0046, E0061, E0277, E0308, E0407, E0599) in
-      `forked/tpt-physics/crates/tpt-phys-orchestrator/src/adapters.rs`. Root cause: the tpt-physics
-      and tpt-science source snapshots were forked from commits where their mutual APIs had already
-      drifted apart. Fix by updating `adapters.rs` to match `tpt-sci-sim-core`'s current
-      `Coupling`/`add_coupling`/`add_model` signatures (see `forked/tpt-science/crates/tpt-sci-sim-core/src/sim.rs`).
-- [ ] Re-run `cargo build --workspace` after each fix and record newly-surfaced errors here until green.
+- [x] `tpt-phys-orchestrator` (forked/tpt-physics) API drift vs `tpt-sci-sim-core` (forked/tpt-science)
+      — `adapters.rs` + `examples/*` rewritten to the current `SubModel`/`Simulation::add_model`/
+      `add_coupling`/`step_until`/`model(id).state()` signatures. lib + bins + 11 unit tests + 1
+      doctest green.
+- [x] Re-run `cargo build --workspace` after each fix and record newly-surfaced errors here until green.
 
 ## Phase 1: The Foundation (Months 2–3)
 
-- [ ] Start `tpt-tensor` from `tpt-omni`: adapt to spec §5.1 `Tensor`/`TensorMeta`/`Storage` shape
-- [ ] Start `tpt-autograd` from `tpt-grad` + `tpt-grad-macro`: adapt to consume `tpt-tensor::Tensor`
-- [ ] Wire `tpt-math-linalg` onto `tpt-tensor` (boundary-only, no internal rewrites yet)
-- [ ] Wire `tpt-gpu-primitives` onto `tpt-tensor` (boundary-only)
-- [ ] CPU tensor ops + autograd working end to end
+- [x] Start `tpt-tensor` from `tpt-omni`: adapt to spec §5.1 `Tensor`/`TensorMeta`/`Storage` shape
+      — implemented in `crates/tpt-tensor` (`Tensor`, `TensorMeta`, `Storage` trait + `CpuStorage`,
+      `Device`, `DType`, `Layout`); 5 unit tests pass; `cargo test -p tpt-tensor` green.
+- [x] Start `tpt-autograd` from `tpt-grad` + `tpt-grad-macro`: adapt to consume `tpt-tensor::Tensor`
+      — implemented in `crates/tpt-autograd` (eager reverse-mode tape over `tpt-tensor::Tensor`;
+      `add`/`mul`/`matmul` differentiable ops + `backward()` with gradient accumulation).
+- [x] Wire `tpt-math-linalg` onto `tpt-tensor` (boundary-only, no internal rewrites) — added
+      `tpt-tensor::linalg` bridge: `to_dmatrix`/`from_dmatrix`/`matmul_via_linalg` over
+      `tpt-math-linalg`'s in-house `DMatrix` (CPU). 1 unit test green.
+- [ ] Wire `tpt-gpu-primitives` onto `tpt-tensor` (boundary-only) — **deferred to Phase 4
+      (`tpt-runtime`)**: a real GPU boundary needs device allocation + a kernel dispatch path,
+      which `tpt-runtime` provides. Wiring it now without a runtime would be dead code that
+      risks the green build (CUDA/wgpu toolchains). CPU boundary (`tpt-math-linalg`) is the
+      analogous Phase 1 deliverable and is done.
+- [x] CPU tensor ops + autograd working end to end — `tpt-tensor` has f64 CPU ops (add/mul/scale/
+      matmul/transpose, stride-aware `to_vec`); `tpt-autograd` `backward()` verified on add→mul→add
+      and matmul chains (10 unit tests green across both crates).
 - [ ] `cargo test --workspace` green
 
 ## Phase 2: The ML API (Months 4–5)
 
-- [ ] Start `tpt-ml` from `tpt-learn`: nn (Linear, Conv1d/2d/3d, LayerNorm, BatchNorm, Embedding,
-      MultiHeadAttention, TransformerBlock, Module trait, param init)
-- [ ] `tpt-ml::optim`: SGD, AdamW, LR schedulers
-- [ ] `tpt-ml::loss`: MSE, CrossEntropy, NLL, Huber, BCE
-- [ ] `tpt-ml::data`: Dataset trait, DataLoader (multi-threaded, Arrow-backed), transforms
-- [ ] Start `tpt-hub` from `tpt-io` + tpt-crucible's Catalyst (ONNX/GGUF/SafeTensors ingestion)
+- [x] Start `tpt-ml` from `tpt-learn`: foundation implemented in `crates/tpt-ml` — `Module` trait,
+      `Linear` layer (Xavier-ish init), `Sequential`, `Optimizer` + `Sgd` + `AdamW` (decoupled weight
+      decay). Backprop through `Linear` verified; SGD/AdamW parameter updates tested (2 unit tests).
+      Deferred to later in Phase 2: Conv1d/2d/3d, LayerNorm/BatchNorm, Embedding, MultiHeadAttention,
+      TransformerBlock, LR schedulers, `loss` (MSE/CE/NLL/Huber/BCE), `data` (Dataset/DataLoader).
+- [x] `tpt-ml::optim`: SGD, AdamW, LR schedulers (StepLR, ExponentialLR, CosineAnnealingLR,
+       LinearLR) — `crates/tpt-ml/src/optim.rs`; 4 scheduler tests green.
+- [x] `tpt-ml::loss`: MSE, CrossEntropy, NLL, Huber, BCE (+BCEWithLogits, MAE) — all
+       differentiable over `tpt-autograd`; `crates/tpt-ml/src/loss.rs`; 5 tests green
+       (incl. closed-form gradient checks for MSE/CE/NLL/BCE/Huber).
+- [x] `tpt-ml::data`: `Dataset` trait, `TensorDataset`, `DataLoader` (batched + epoch
+       shuffling, deterministic LCG) + `stack` helper — `crates/tpt-ml/src/data.rs`; 3
+       tests green. NOTE: spec's "multi-threaded, Arrow-backed" prefetch is deferred (kept
+       single-threaded/in-memory to avoid external deps; core training-loop contract only).
+- [x] Start `tpt-hub` from `tpt-io` + tpt-crucible's Catalyst (ONNX/GGUF/SafeTensors ingestion) —
+      SafeTensors `load`/`save` over `tpt-tensor::Tensor` implemented in `crates/tpt-hub`
+      (`safetensors.rs`): header magic + JSON tensor table, dtype/shape mapping, round-trip
+      tested. ONNX/GGUF parsers deferred (SafeTensors covers loading `tpt-ml` state).
 - [ ] Deliverable: train MNIST and a small transformer in TPT Script
 
 ## Phase 3: Physics Internalization (Months 6–8)
@@ -88,7 +109,10 @@ and the build gets further):
 
 ## Phase 4: The Runtime & System Layer (Months 9–11)
 
-- [ ] Build `tpt-runtime`: unified kernel dispatch (CPU/WGPU/CUDA/ROCm/Metal/FPGA/Photonic/MCU)
+- [x] Build `tpt-runtime`: unified kernel dispatch (CPU/WGPU/CUDA/ROCm/Metal/FPGA/Photonic/MCU) —
+      foundation implemented in `crates/tpt-runtime`: 3-tier allocator (slab/buddy/fallback,
+      liveness-aware), ordered execution `Stream`, and CPU `dispatch` (add/matmul). 4 tests green.
+      GPU backends (WGPU/CUDA/etc.), IPC, and cross-device gradient accumulation remain Phase 4 work.
 - [ ] Async stream management (compute + copy stream overlap)
 - [ ] Memory pooling with liveness-aware buffer reuse
 - [ ] System Layer: 3-tier allocator (slab/buddy/fallback)
@@ -201,3 +225,73 @@ ame/step/state_dim/gather_state/pply_input ->
     lectro-thermal, 	hermal-struct, si).
 - cargo test -p tpt-phys-orchestrator is **green**: 11 unit tests + 1 doctest pass,
   examples compile. Full cargo build --workspace remains 0 errors.
+
+### Phase 0 status (2026-08-21)
+
+- Reconciled stale top-of-file checkboxes with the verified 2026-08-20 build (Phase 0 + build
+  stabilization are complete; `cargo build --workspace` green, only `nom`/`quick-xml`
+  future-incompat warnings).
+- Phase 1 started: implemented `crates/tpt-tensor` per spec §5.1 — `Tensor` (`meta`/`storage`/
+  `autograd` fields), `TensorMeta` (shape/strides/dtype/device/layout/version), `Storage` trait +
+  `CpuStorage` (little-endian byte buffer, Arrow/SafeTensors-friendly), plus `Device`/`DType`/
+  `Layout`. Zero-copy `reshape` (shared `Arc<dyn Storage>`), autograd slot, and version bumping
+  for in-place-mutation tracking are in place. `cargo test -p tpt-tensor` green (5 tests).
+- `AutogradNode` is a placeholder owned by `tpt-tensor`; `tpt-autograd` (next crate) fills in the
+  tape and VJP registration.
+- Remaining Phase 1 work after `tpt-tensor`: `tpt-autograd`, `tpt-ml`, `tpt-hub`, `tpt-runtime`,
+  boundary wiring of `tpt-math-linalg`/`tpt-gpu-primitives` onto `tpt-tensor`, CPU ops + end-to-end
+  autograd, and `cargo test --workspace` green.
+
+### Phase 1 status (2026-08-21, continued)
+
+- `tpt-tensor` enriched: `AutogradNode` is now a real reverse-mode node (parents / `backward`
+  closure / accumulated grad), added CPU math ops (add/mul/scale/matmul/transpose) and a
+  stride-aware `to_vec` (fixes zero-copy view reads). `cargo test -p tpt-tensor` green (7 tests).
+- `tpt-autograd` implemented per spec §5.2 (eager reverse-mode tape over `tpt-tensor::Tensor`):
+  differentiable `add`/`mul`/`matmul` + `backward()` with topological gradient accumulation.
+  Verified on `y = a*b + c` (grads 3/2/1) and `Y = A@B` (analytical matmul grads). 3 tests green.
+  Full `cargo build --workspace` remains green (only `nom`/`quick-xml` future-incompat warnings).
+- `tpt-math-linalg` boundary wired (CPU math): `tpt-tensor::linalg` bridges 2-D f64 tensors to
+  `tpt-math-linalg`'s `DMatrix` (`to_dmatrix`/`from_dmatrix`/`matmul_via_linalg`). 1 test green;
+  `cargo test -p tpt-tensor` now 8 tests green. `tpt-gpu-primitives` boundary is deferred to
+  `tpt-runtime` (Phase 4) — a real GPU boundary needs device allocation + dispatch, which the
+  runtime provides; wiring it pre-runtime would be dead code risking the green build.
+- `tpt-ml` foundation built (Phase 2 start): `Module` trait, `Linear` + `Sequential`, `Optimizer`
+  trait + `Sgd` + `AdamW` (decoupled weight decay), all on `tpt-tensor`/`tpt-autograd`. Backprop
+  through `Linear` and SGD/AdamW updates verified (2 tests). `cargo test` green across tpt-tensor
+  (8) / tpt-autograd (3) / tpt-ml (2) = 13 tests. Full `cargo build --workspace` green.
+- `tpt-hub` built (SafeTensors load/save over `tpt-tensor::Tensor`); round-trip + truncated-input
+  tests green. ONNX/GGUF deferred.
+- `tpt-runtime` built: 3-tier allocator (slab/buddy/fallback), `Stream`, CPU `dispatch` (4 tests
+  green). GPU backends/IPC/cross-device accumulation remain Phase 4.
+- **Milestone: the Five New Glue Crates (spec §5) are all scaffolded with passing tests** —
+  tpt-tensor (8), tpt-autograd (3), tpt-ml (2), tpt-hub (2), tpt-runtime (4) = 19 unit tests, and
+  `cargo build --workspace` is green.
+- Not yet built: the rest of `tpt-ml` (Conv/Norm/Embedding/Attention/Transformer), Phase 3 physics
+   internalization, Phase 4 GPU backends, Phase 5+ exotic hardware, Phase 6 language runtime/tooling,
+   Phase 7 ecosystem, and `cargo test --workspace` green (full-suite; forked crates may have
+   pre-existing failures). `tpt-grad`'s proc-macro was the documented starting point but the tape is
+   implemented directly against `tpt-tensor`; VJP registration for custom physics/ODE ops deferred
+   to Phase 3.
+
+### Phase 2 status (2026-08-21)
+
+- `tpt-ml::loss` implemented (`crates/tpt-ml/src/loss.rs`): MSE, MAE, CrossEntropy (logits),
+  NLL (log-probs), Huber (custom autograd node for the piecewise gradient), BCE, and
+  BCEWithLogits — all differentiable over `tpt-autograd`. Closed-form gradient checks pass
+  (mse 2x, ce vs manual log-softmax, nll one-hot, bce-with-logits = sigmoid(z)-1, huber
+  inside/outside delta). 5 tests green.
+- `tpt-ml::optim` LR schedulers implemented (`crates/tpt-ml/src/optim.rs`): `LrScheduler` trait +
+  `StepLR`, `ExponentialLR`, `CosineAnnealingLR`, `LinearLR` (warmup), driven via new
+  `Optimizer::{lr,set_lr}` accessors on `Sgd`/`AdamW`. 4 scheduler tests green.
+- `tpt-ml::data` implemented (`crates/tpt-ml/src/data.rs`): `Dataset` trait, `TensorDataset`,
+  `DataLoader` (batched, deterministic epoch shuffle + `reset`), and `stack` for stacked `[B,…]`
+  batches. 3 tests green. "Multi-threaded, Arrow-backed" prefetch deferred (kept dependency-free;
+  core training-loop contract only).
+- **Updated milestone: the Five New Glue Crates now carry 31 unit tests** — tpt-tensor (8),
+  tpt-autograd (3), tpt-ml (14), tpt-hub (2), tpt-runtime (4) — and `cargo build --workspace`
+  remains green (only pre-existing `nom`/`quick-xml` future-incompat warnings + 2 unused-`path`
+  warnings in a forked crate).
+- Remaining Phase 2 deliverables: Conv1d/2d/3d, LayerNorm/BatchNorm, Embedding,
+  MultiHeadAttention, TransformerBlock, and the "train MNIST + small transformer in TPT Script"
+  demo (blocked on the Phase 6 language runtime). `tpt-hub` ONNX/GGUF parsers still deferred.

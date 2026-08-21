@@ -4,3 +4,9 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[dependencies]
+thiserror = { workspace = true }
+
+# Boundary bridge (spec §5.1): tpt-tensor consumes tpt-math-linalg for CPU math.
+# No internal rewrites — pure conversion at the boundary.
+tpt-math-linalg = { path = "../../forked/tpt-math/crates/tpt-math-linalg" }

@@ -6671,6 +6671,8 @@ dependencies = [
 name = "tpt-hub"
 version = "0.1.0"
 dependencies = [
+ "serde",
+ "serde_json",
  "tpt-tensor",
 ]
 
@@ -7183,6 +7185,7 @@ dependencies = [
 name = "tpt-runtime"
 version = "0.1.0"
 dependencies = [
+ "thiserror 2.0.20",
  "tpt-tensor",
 ]
 
@@ -7450,6 +7453,10 @@ dependencies = [
 [[package]]
 name = "tpt-tensor"
 version = "0.1.0"
+dependencies = [
+ "thiserror 2.0.20",
+ "tpt-math-linalg 0.1.0",
+]
 
 [[package]]
 name = "tpt-uir-core"
