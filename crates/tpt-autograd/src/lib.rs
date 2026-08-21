@@ -114,6 +114,23 @@ fn record(
     result
 }
 
+/// Register a custom vector-Jacobian product (VJP) for a user op.
+///
+/// `forward` is the op's output tensor (typically built from raw element values
+/// via `Tensor::from_typed`); `parents` are the autograd nodes of the inputs that
+/// the VJP scatters into; `backward` receives the output gradient and must call
+/// `AccumulateGrad` on each parent (`AutogradNode::accumulate_grad`).
+///
+/// This is the Phase 3 VJP-registration surface used by the scientific-computing
+/// glue crate (`tpt-sci`) to make ODE/FEA solvers differentiable.
+pub fn custom_vjp(
+    forward: Tensor,
+    parents: Vec<Arc<AutogradNode>>,
+    backward: impl Fn(&Tensor) + Send + Sync + 'static,
+) -> Tensor {
+    record(forward, parents, backward)
+}
+
 /// Reverse-mode backward from a (possibly non-scalar) output.
 ///
 /// Seeds the output gradient with ones (i.e. differentiates the implicit sum),
@@ -309,7 +326,7 @@ pub fn sigmoid(a: &Tensor) -> Tensor {
     })
 }
 
-/// Differentiable softmax over the last axis.
+/// Differentiable softmax over the last axis (any rank).
 pub fn softmax(a: &Tensor) -> Tensor {
     let result = a.softmax();
     if !a.requires_grad() {
@@ -322,12 +339,15 @@ pub fn softmax(a: &Tensor) -> Tensor {
         let gv = grad.to_vec::<f64>().unwrap();
         let ov = out.to_vec::<f64>().unwrap();
         let mut grad_v = vec![0.0f64; gv.len()];
-        if shape.len() == 2 {
-            let (r, c) = (shape[0], shape[1]);
-            for i in 0..r {
-                let dot: f64 = (0..c).map(|j| gv[i * c + j] * ov[i * c + j]).sum();
+        if shape.len() >= 2 {
+            // rows of length `c` along the last axis
+            let c = shape[shape.len() - 1];
+            let rows = gv.len() / c;
+            for i in 0..rows {
+                let base = i * c;
+                let dot: f64 = (0..c).map(|j| gv[base + j] * ov[base + j]).sum();
                 for j in 0..c {
-                    grad_v[i * c + j] = gv[i * c + j] - ov[i * c + j] * dot;
+                    grad_v[base + j] = gv[base + j] - ov[base + j] * dot;
                 }
             }
         } else {
@@ -337,6 +357,68 @@ pub fn softmax(a: &Tensor) -> Tensor {
             }
         }
         node.accumulate_grad(&Tensor::from_typed(grad_v).reshape(&shape).unwrap());
+    })
+}
+
+/// Differentiable batched 3-D matrix multiply: `[B, M, K] @ [B, K, N]`.
+/// Per-batch gradients: `grad_a[b] = grad[b] @ b[b]^T`, `grad_b[b] = a[b]^T @ grad[b]`.
+pub fn bmm(a: &Tensor, b: &Tensor) -> Tensor {
+    let result = a.bmm(b);
+    if !a.requires_grad() && !b.requires_grad() {
+        return result;
+    }
+    let a_node = a.node();
+    let b_node = b.node();
+    let parents = collect_parents(&a_node, &b_node);
+    let shape_a = a.shape().to_vec();
+    let shape_b = b.shape().to_vec();
+    let batch = shape_a[0];
+    let (_, m, k) = (shape_a[0], shape_a[1], shape_a[2]);
+    let (_, _, n) = (shape_b[0], shape_b[1], shape_b[2]);
+    let a_fwd = a.clone();
+    let b_fwd = b.clone();
+    record(result, parents, move |grad: &Tensor| {
+        let g = grad.to_vec::<f64>().unwrap();
+        let av = a_fwd.to_vec::<f64>().unwrap();
+        let bv = b_fwd.to_vec::<f64>().unwrap();
+        // grad_a[b] = grad[b] @ b[b]^T  ([M,N] @ [N,K] -> [M,K])
+        if let Some(an) = &a_node {
+            let mut ga = vec![0.0f64; batch * m * k];
+            for bb in 0..batch {
+                let g_off = bb * m * n;
+                let b_off = bb * k * n;
+                let o_off = bb * m * k;
+                for i in 0..m {
+                    for j in 0..k {
+                        let mut s = 0.0;
+                        for kk in 0..n {
+                            s += g[g_off + i * n + kk] * bv[b_off + j * n + kk];
+                        }
+                        ga[o_off + i * k + j] = s;
+                    }
+                }
+            }
+            an.accumulate_grad(&Tensor::from_typed(ga).reshape(&shape_a).unwrap());
+        }
+        // grad_b[b] = a[b]^T @ grad[b]  ([K,M] @ [M,N] -> [K,N])
+        if let Some(bn) = &b_node {
+            let mut gb = vec![0.0f64; batch * k * n];
+            for bb in 0..batch {
+                let g_off = bb * m * n;
+                let a_off = bb * m * k;
+                let o_off = bb * k * n;
+                for i in 0..k {
+                    for j in 0..n {
+                        let mut s = 0.0;
+                        for kk in 0..m {
+                            s += av[a_off + kk * k + i] * g[g_off + kk * n + j];
+                        }
+                        gb[o_off + i * n + j] = s;
+                    }
+                }
+            }
+            bn.accumulate_grad(&Tensor::from_typed(gb).reshape(&shape_b).unwrap());
+        }
     })
 }
 
@@ -418,5 +500,32 @@ mod tests {
         let b = Tensor::from_typed(vec![3.0_f64]);
         let y = add(&a, &b); // neither requires grad -> no node
         assert!(!y.requires_grad());
+    }
+
+    #[test]
+    fn backward_bmm() {
+        // B=1: A = [[1,2],[3,4]], B = [[1,0],[0,1]] (identity) -> Y = A
+        // seed = ones -> dA = ones @ B^T = ones, dB = A^T @ ones = col-sums of A^T
+        let a = Tensor::from_typed(vec![1.0_f64, 2.0, 3.0, 4.0])
+            .reshape(&[1, 2, 2])
+            .unwrap()
+            .with_autograd();
+        let b = Tensor::from_typed(vec![1.0_f64, 0.0, 0.0, 1.0])
+            .reshape(&[1, 2, 2])
+            .unwrap()
+            .with_autograd();
+        let y = bmm(&a, &b);
+        assert_eq!(y.shape(), &[1, 2, 2]);
+        assert_eq!(y.to_vec::<f64>().unwrap(), vec![1.0, 2.0, 3.0, 4.0]);
+        backward(&y);
+        assert_eq!(
+            a.grad().unwrap().to_vec::<f64>().unwrap(),
+            vec![1.0, 1.0, 1.0, 1.0]
+        );
+        // dB = A^T @ ones = [[1+3, 1+3], [2+4, 2+4]] -> flat [4, 4, 6, 6]
+        assert_eq!(
+            b.grad().unwrap().to_vec::<f64>().unwrap(),
+            vec![4.0, 4.0, 6.0, 6.0]
+        );
     }
 }

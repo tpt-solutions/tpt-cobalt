@@ -7,6 +7,7 @@
 //! `backward` then populates parameter gradients for the optimizer to consume.
 
 pub mod activations;
+pub mod attention;
 pub mod conv;
 pub mod data;
 pub mod embedding;
@@ -17,7 +18,8 @@ pub mod norm;
 pub mod optim;
 
 pub use activations::{gelu, relu, sigmoid_act, tanh};
-pub use conv::Conv2d;
+pub use attention::{MultiHeadAttention, TransformerBlock};
+pub use conv::{Conv1d, Conv2d, Conv3d};
 pub use data::{Dataset, DataLoader, TensorDataset};
 pub use embedding::Embedding;
 pub use layers::{Linear, Sequential};

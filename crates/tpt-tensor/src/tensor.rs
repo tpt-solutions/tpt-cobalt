@@ -401,35 +401,53 @@ impl Tensor {
         Tensor::from_typed(vec![m]).reshape(&[1]).unwrap()
     }
 
-    /// Softmax over the last axis (1-D or 2-D).
+    /// Softmax over the last axis (any rank).
     pub fn softmax(&self) -> Tensor {
-        match self.ndim() {
-            1 => {
-                let v = self.to_vec::<f64>().unwrap();
-                let m = v.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-                let e: Vec<f64> = v.iter().map(|x| (x - m).exp()).collect();
-                let s = e.iter().sum::<f64>();
-                Tensor::from_typed(e.iter().map(|x| x / s))
-                    .reshape(self.shape())
-                    .unwrap()
+        let ndim = self.ndim();
+        assert!(ndim >= 1, "softmax requires rank >= 1");
+        let c = self.shape()[ndim - 1];
+        let rows = self.numel() / c;
+        let v = self.to_vec::<f64>().unwrap();
+        let mut out = vec![0.0f64; rows * c];
+        for i in 0..rows {
+            let row = &v[i * c..(i + 1) * c];
+            let m = row.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+            let e: Vec<f64> = row.iter().map(|x| (x - m).exp()).collect();
+            let s = e.iter().sum::<f64>();
+            for j in 0..c {
+                out[i * c + j] = e[j] / s;
             }
-            2 => {
-                let (r, c) = (self.shape()[0], self.shape()[1]);
-                let v = self.to_vec::<f64>().unwrap();
-                let mut out = vec![0.0f64; r * c];
-                for i in 0..r {
-                    let row = &v[i * c..(i + 1) * c];
-                    let m = row.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-                    let e: Vec<f64> = row.iter().map(|x| (x - m).exp()).collect();
-                    let s = e.iter().sum::<f64>();
-                    for j in 0..c {
-                        out[i * c + j] = e[j] / s;
-                    }
-                }
-                Tensor::from_typed(out).reshape(self.shape()).unwrap()
-            }
-            _ => panic!("softmax scaffold supports 1-D/2-D only"),
         }
+        Tensor::from_typed(out).reshape(self.shape()).unwrap()
+    }
+
+    /// Batched 3-D matrix multiply: `[B, M, K] @ [B, K, N] -> [B, M, N]` (CPU, f64).
+    pub fn bmm(&self, other: &Tensor) -> Tensor {
+        assert_eq!(self.ndim(), 3, "bmm requires 3-D inputs");
+        assert_eq!(other.ndim(), 3, "bmm requires 3-D inputs");
+        let b = self.shape()[0];
+        assert_eq!(b, other.shape()[0], "bmm batch mismatch");
+        let (m, k) = (self.shape()[1], self.shape()[2]);
+        let (k2, n) = (other.shape()[1], other.shape()[2]);
+        assert_eq!(k, k2, "bmm inner-dim mismatch: {k} vs {k2}");
+        let a = self.to_vec::<f64>().unwrap();
+        let bm = other.to_vec::<f64>().unwrap();
+        let mut out = vec![0.0f64; b * m * n];
+        for bb in 0..b {
+            let a_off = bb * m * k;
+            let b_off = bb * k * n;
+            let o_off = bb * m * n;
+            for i in 0..m {
+                for j in 0..n {
+                    let mut s = 0.0;
+                    for kk in 0..k {
+                        s += a[a_off + i * k + kk] * bm[b_off + kk * n + j];
+                    }
+                    out[o_off + i * n + j] = s;
+                }
+            }
+        }
+        Tensor::from_typed(out).reshape(&[b, m, n]).unwrap()
     }
 
     /// 2-D matrix multiply (CPU, f64).
@@ -466,6 +484,35 @@ impl Tensor {
             storage: self.storage.clone(),
             autograd: self.autograd.clone(),
         }
+    }
+
+    /// Swap the last two axes (metadata-only strided view; any rank >= 2).
+    /// The result is non-contiguous — call [`Tensor::contiguous`] before a
+    /// zero-copy `reshape` of permuted data.
+    pub fn transpose_last_two(&self) -> Tensor {
+        let ndim = self.ndim();
+        assert!(ndim >= 2, "transpose_last_two requires rank >= 2");
+        let mut meta = self.meta.clone();
+        let last = ndim - 1;
+        meta.shape.swap(last - 1, last);
+        meta.strides.swap(last - 1, last);
+        meta.layout = Layout::Strided;
+        Tensor {
+            meta,
+            storage: self.storage.clone(),
+            autograd: self.autograd.clone(),
+        }
+    }
+
+    /// Materialize a (possibly strided) view into a fresh contiguous buffer.
+    /// Values are copied in row-major logical order; the autograd node is kept
+    /// so gradients flow through the copy unchanged.
+    pub fn contiguous(&self) -> Tensor {
+        if self.meta.layout == Layout::C {
+            return self.clone();
+        }
+        let data = self.to_vec::<f64>().unwrap();
+        Tensor::from_typed(data).reshape(self.shape()).unwrap()
     }
 }
 
@@ -594,5 +641,59 @@ mod tests {
         assert_eq!(c.to_vec::<f64>().unwrap(), vec![2.0, 1.0, 4.0, 3.0]);
         let t = c.transpose();
         assert_eq!(t.shape(), &[2, 2]);
+    }
+
+    #[test]
+    fn bmm_batched_matmul() {
+        // batch 0: [[1,2],[3,4]] @ [[1,0],[0,1]] = [[1,2],[3,4]]
+        // batch 1: [[5,6],[7,8]] @ [[0,1],[1,0]] = [[6,5],[8,7]]
+        let a = Tensor::from_typed(vec![1.0_f64, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0])
+            .reshape(&[2, 2, 2])
+            .unwrap();
+        let b = Tensor::from_typed(vec![1.0_f64, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0])
+            .reshape(&[2, 2, 2])
+            .unwrap();
+        let c = a.bmm(&b);
+        assert_eq!(c.shape(), &[2, 2, 2]);
+        assert_eq!(
+            c.to_vec::<f64>().unwrap(),
+            vec![1.0, 2.0, 3.0, 4.0, 6.0, 5.0, 8.0, 7.0]
+        );
+    }
+
+    #[test]
+    fn transpose_last_two_and_contiguous() {
+        // [B=2, T=2, D=2] permute last two -> [2, 2, 2] with T/D swapped.
+        let x = Tensor::from_typed(vec![
+            1.0_f64, 2.0, 3.0, 4.0, // batch 0: t0=(1,2) t1=(3,4)
+            5.0_f64, 6.0, 7.0, 8.0, // batch 1
+        ])
+        .reshape(&[2, 2, 2])
+        .unwrap();
+        let p = x.transpose_last_two();
+        assert_eq!(p.shape(), &[2, 2, 2]);
+        // logical (b, d, t): batch0 -> [(1,3),(2,4)], batch1 -> [(5,7),(6,8)]
+        assert_eq!(
+            p.to_vec::<f64>().unwrap(),
+            vec![1.0, 3.0, 2.0, 4.0, 5.0, 7.0, 6.0, 8.0]
+        );
+        // contiguous materializes the same logical order into fresh storage
+        let c = p.contiguous();
+        assert_eq!(c.to_vec::<f64>().unwrap(), p.to_vec::<f64>().unwrap());
+        // reshape of the contiguous copy is now safe and correct
+        let r = c.reshape(&[4, 2]).unwrap();
+        assert_eq!(r.to_vec::<f64>().unwrap(), vec![1.0, 3.0, 2.0, 4.0, 5.0, 7.0, 6.0, 8.0]);
+    }
+
+    #[test]
+    fn softmax_3d_last_axis() {
+        let x = Tensor::from_typed(vec![0.0_f64, 0.0, 1.0, 3.0])
+            .reshape(&[1, 2, 2])
+            .unwrap();
+        let s = x.softmax();
+        assert_eq!(s.shape(), &[1, 2, 2]);
+        let v = s.to_vec::<f64>().unwrap();
+        assert!((v[0] - 0.5).abs() < 1e-9 && (v[1] - 0.5).abs() < 1e-9);
+        assert!((v[2] - 0.11920292).abs() < 1e-6 && (v[3] - 0.88079708).abs() < 1e-6);
     }
 }

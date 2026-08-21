@@ -14,6 +14,20 @@ pub trait Optimizer {
     fn set_lr(&mut self, lr: f64);
 }
 
+/// Step an optimizer over `params` and reattach fresh leaf autograd nodes to
+/// the updated tensors.
+///
+/// This is needed because [`tpt_tensor::Tensor::set_values`] (used internally
+/// by every optimizer) detaches the tape; without reattachment, the *next*
+/// forward pass records no graph and `backward` fails on epoch 2+.
+///
+/// Returns the updated parameter vector (pass it back via
+/// [`crate::Module::set_parameters`]).
+pub fn step_attached(opt: &mut dyn Optimizer, mut params: Vec<Tensor>) -> Vec<Tensor> {
+    opt.step(&mut params);
+    params.into_iter().map(|p| p.with_autograd()).collect()
+}
+
 /// Stochastic gradient descent: `param -= lr * grad`.
 pub struct Sgd {
     lr: f64,
@@ -380,17 +394,17 @@ mod tests {
         use crate::loss::mse;
         // Fit a tiny MLP to the constant target 1.0, proving the whole stack
         // (Linear -> ReLU -> Linear -> MSE -> SGD) backprops and trains.
-        let mut w1 = Linear::new(1, 8, true);
-        let mut w2 = Linear::new(8, 1, true);
-        let mut opt = Sgd::new(0.05);
-        let sample = || {
+        fn loss_of(w1: &Linear, w2: &Linear) -> f64 {
             let x = Tensor::from_typed(vec![0.5_f64]).reshape(&[1, 1]).unwrap();
             let y = w2.forward(&relu(&w1.forward(&x)));
             let t = Tensor::from_typed(vec![1.0_f64]).reshape(&[1, 1]).unwrap();
             mse(&y, &t).to_vec::<f64>().unwrap()[0]
-        };
-        let init_loss = sample();
-        for _ in 0..300 {
+        }
+        let mut w1 = Linear::new(1, 8, true);
+        let mut w2 = Linear::new(8, 1, true);
+        let mut opt = AdamW::with_config(0.1, 0.9, 0.999, 1e-8, 0.0);
+        let init_loss = loss_of(&w1, &w2);
+        for _ in 0..2000 {
             let x = Tensor::from_typed(vec![0.5_f64])
                 .reshape(&[1, 1])
                 .unwrap()
@@ -409,11 +423,11 @@ mod tests {
             w1.set_parameters(p1);
             w2.set_parameters(p2);
         }
-        let final_loss = sample();
+        let final_loss = loss_of(&w1, &w2);
         assert!(
             final_loss < init_loss,
             "loss should decrease: {init_loss} -> {final_loss}"
         );
-        assert!(final_loss < 0.1, "mlp should converge: {final_loss}");
+        assert!(final_loss < 0.05, "mlp should converge: {final_loss}");
     }
 }

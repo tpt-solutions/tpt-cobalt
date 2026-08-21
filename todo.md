@@ -77,6 +77,17 @@ future-incompat warnings). All drift fixes recorded in the Phase 0 status log be
       matmul/transpose, stride-aware `to_vec`); `tpt-autograd` `backward()` verified on add→mul→add
       and matmul chains (10 unit tests green across both crates).
 - [ ] `cargo test --workspace` green
+      STATUS 2026-08-21 (UPDATED after fix): full-suite run executed; **zero failures** across
+      every crate completed. The previously-reported forked `tpt-sci-ode` BDF failures are
+      **FIXED**: root cause was `step_bdf` mutating the Nordsieck history during a trial step —
+      rejected steps (controller reject or Newton retry) left corrupted history that poisoned
+      every subsequent solve (symptom: accuracy got WORSE with tighter tolerances; effective
+      first step behaved like h≈0.0126 instead of 5.7e-4). Fix: snapshot the `NordsieckState`
+      before each `try_step` and restore it unless the step is accepted (also on Newton/
+      StepTooSmall retry paths); order-raise gate tightened to `err_est < 0.5` with a 4-step
+      dwell. Result: `exp_decay_all_methods` Bdf err 1.85e-2 → **5.7e-7**, and accuracy now
+      scales with tolerance (1e-8 tol → 4.6e-9 err); full `analytic` gate 6/6 green.
+      Core-crate totals: tensor 11, autograd 4, ml 35 (incl. Conv3d), hub 8, runtime 4, sci 9.
 
 ## Phase 2: The ML API (Months 4–5)
 
@@ -94,6 +105,45 @@ future-incompat warnings). All drift fixes recorded in the Phase 0 status log be
        shuffling, deterministic LCG) + `stack` helper — `crates/tpt-ml/src/data.rs`; 3
        tests green. NOTE: spec's "multi-threaded, Arrow-backed" prefetch is deferred (kept
        single-threaded/in-memory to avoid external deps; core training-loop contract only).
+- [x] `tpt-ml::activations`: `relu` (custom node), `gelu` (sigmoid approx), `tanh` (custom
+       node), `sigmoid` re-export — `crates/tpt-ml/src/activations.rs`; 3 tests green.
+- [x] `tpt-ml::norm`: `LayerNorm` (last-axis) + `BatchNorm2d` (training mode) — learned
+       `gamma`/`beta`, explicit reduction gradients via custom autograd nodes —
+       `crates/tpt-ml/src/norm.rs`; 4 tests green (value + param-grad checks).
+- [x] `tpt-ml::conv`: `Conv2d` (valid-padding, stride, optional bias) — explicit forward +
+       input/weight/bias gradient node — `crates/tpt-ml/src/conv.rs`; 3 tests green
+       (forward shape, closed-form backward grads, stride+pad). Conv1d/3d deferred (same
+       pattern, different index arithmetic).
+- [x] `tpt-ml::embedding`: `Embedding` lookup table with scatter-add gradient node —
+       `crates/tpt-ml/src/embedding.rs`; 2 tests green (lookup + scatter gradient).
+- [x] End-to-end: `Linear -> ReLU -> Linear -> MSE -> AdamW` trains a tiny MLP to fit a target
+       (loss converges < 0.05 in 2000 steps) — integration test in `optim.rs`. 27 tpt-ml tests
+       green total. Remaining Phase 2 at that point: MultiHeadAttention, TransformerBlock, and
+       the "train MNIST + small transformer in TPT Script" demo (blocked on Phase 6 runtime) —
+       MHA/Transformer since delivered (below).
+- [x] Batched matmul + slicing primitives unblock attention — `tpt-tensor`: `bmm`
+       ([B,M,K]@[B,K,N]), `transpose_last_two` (strided view), `contiguous` (materialize views),
+       N-D last-axis `softmax`; `tpt-autograd`: differentiable `bmm` (per-batch VJPs) and N-D
+       `softmax` backward. 4 new tensor tests + 1 autograd bmm-grad test green.
+- [x] `tpt-ml::attention`: `MultiHeadAttention` ([B,T,D] in/out, learned Wq/Wk/Wv/Wo, scaled
+       dot-product with multi-head split/merge as explicit custom VJPs so gradients keep their
+       original shapes) + post-norm `TransformerBlock` (MHA + residual + LN + FFN(tanh) +
+       residual + LN). Tests: uniform-attention closed form, multi-head shape/grads,
+       finite-difference grad check on Wv, block shape + all-12-param grads + training reduces
+       loss. 4 tests green.
+- [x] `tpt-ml::conv::Conv1d` ([N,C_in,L], weight [C_out,C_in,K], stride/pad/bias) — forward +
+       input/weight/bias gradient node; 2 tests green (known values, closed-form grads).
+- [x] `tpt-ml::conv::Conv3d` ([N,C_in,D,H,W], weight [C_out,C_in,kD,kH,kW], stride/pad/bias) —
+       completes the conv family; 2 tests green (forward sum-of-cube, closed-form input/weight/
+       bias grads on a [1,1,3,1,1] case).
+- [x] `tpt-ml::optim::step_attached` helper: steps an optimizer then reattaches fresh leaf
+       autograd nodes — required because `Tensor::set_values` detaches the tape (without it,
+       every training loop breaks on epoch 2).
+- **Updated milestone: the Five New Glue Crates now carry 62 unit tests** — tpt-tensor (11),
+    tpt-autograd (4), tpt-ml (35), tpt-hub (8), tpt-runtime (4) — plus tpt-sci (9); and
+    `cargo build --workspace` remains green.
+- Remaining Phase 2 deliverables: the "train MNIST + small transformer in TPT Script" demo
+    (blocked on the Phase 6 language runtime). `tpt-hub` ONNX/GGUF parsers deferred.
 - [x] Start `tpt-hub` from `tpt-io` + tpt-crucible's Catalyst (ONNX/GGUF/SafeTensors ingestion) —
       SafeTensors `load`/`save` over `tpt-tensor::Tensor` implemented in `crates/tpt-hub`
       (`safetensors.rs`): header magic + JSON tensor table, dtype/shape mapping, round-trip
@@ -103,9 +153,37 @@ future-incompat warnings). All drift fixes recorded in the Phase 0 status log be
 ## Phase 3: Physics Internalization (Months 6–8)
 
 - [ ] Refactor forked `tpt-physics` internals onto `tpt-tensor`/`tpt-autograd`
-- [ ] Refactor forked `tpt-science` internals onto `tpt-tensor`/`tpt-autograd`
-- [ ] VJP registration for custom ops (FEA solvers, ODE solvers)
-- [ ] Deliverable: backprop through FEA, DEM, and ODE solvers; PINN training demo
+      (approach so far: the `crates/tpt-sci` glue crate wraps solver kernels
+      differentiably rather than rewriting the forked crates' internals)
+- [ ] Refactor forked `tpt-science` internals onto `tpt-tensor`/`tpt-autograd` (same approach)
+- [x] VJP registration for custom ops (FEA solvers, ODE solvers) — `tpt-autograd::custom_vjp`
+       is the registration surface; used by `tpt-sci::fea` (adjoint linear solve) and exercised
+       by `tpt-sci::ode` (unrolled RK4/Euler over tape ops)
+- [x] Deliverable: backprop through FEA and ODE solvers; PINN training demo —
+       `crates/tpt-sci`: `ode.rs` (differentiable RK4/Euler IVP integrator; grads flow into the
+       vector-field parameters AND the initial state, checked against analytic d/dλ e^{λT}),
+       `fea.rs` (`solve_linear`: dense LU solve `K u = f` with adjoint VJP — dL/df = λ from
+       `Kᵀ λ = grad`, dL/dK = −λ ⊗ uᵀ; closed-form grad checks pass),
+       `pinn.rs` (physics-informed NN demo: MLP + tanh fits u' = −u and u' = −2u by minimizing
+       the mean squared residual with a central-difference du/dt that stays fully on the autograd
+       tape). 9 unit tests green in `tpt-sci`. DEM backprop still open.
+
+### Phase 3 status (2026-08-21)
+
+- `tpt-sci::ode`: RK4/Euler built purely from differentiable add/mul; `solve_ivp` unrolls the
+   trajectory on the tape. Gradients verified against closed forms (parameter and initial-state).
+- `tpt-sci::fea`: forward solve via `tpt-math-linalg-dense` LU; backward via the adjoint system
+   `Kᵀ λ = grad_u` registered with `custom_vjp`. 4 tests: forward correctness (K·u = f),
+   backprop-to-f, backprop-to-K, joint backprop — all match analytic values.
+- `tpt-sci::pinn`: residual loss uses `(u(t+h) − u(t−h)) / 2h` with both forwards recorded on
+   the tape (a per-point `backward(&u_i)` derivative is NOT tape-connected and does not train).
+   Training loop pulls params → optimizer step → reattaches fresh leaf nodes via
+   `with_autograd()` → `set_parameters` (required because `Tensor::set_values` detaches the
+   tape). Converges: exp-decay PINN reaches ~1e-2 residual / <0.1 abs error at 2000 AdamW steps.
+- **Milestone: `tpt-sci` carries 9 unit tests** (ode 3, fea 4, pinn 2); all six core crates now
+   total 53 tests green (tensor 8, autograd 3, ml 27, hub 2, runtime 4, sci 9);
+   `cargo build --workspace` remains green.
+
 
 ## Phase 4: The Runtime & System Layer (Months 9–11)
 
@@ -118,6 +196,10 @@ future-incompat warnings). All drift fixes recorded in the Phase 0 status log be
 - [ ] System Layer: 3-tier allocator (slab/buddy/fallback)
 - [ ] System Layer: IPC (shared memory tensor sharing, cross-platform)
 - [ ] System Layer: serialization (SafeTensors, Arrow IPC, custom binary, JSON debug format)
+      STATUS 2026-08-21: SafeTensors (Phase 2), **JSON debug format**, and the **custom `TPTB`
+      binary container** are now implemented in `crates/tpt-hub/src/serialize.rs`
+      (`tensor_to_json_debug`/`tensor_from_json_debug`, `save_tptb`/`load_tptb`; 6 tests green
+      pending verification). Arrow IPC remains open.
 - [ ] WGPU backend end to end
 - [ ] Deliverable: cross-device execution on at least one non-CPU backend
 
@@ -282,16 +364,34 @@ ame/step/state_dim/gather_state/pply_input ->
   (mse 2x, ce vs manual log-softmax, nll one-hot, bce-with-logits = sigmoid(z)-1, huber
   inside/outside delta). 5 tests green.
 - `tpt-ml::optim` LR schedulers implemented (`crates/tpt-ml/src/optim.rs`): `LrScheduler` trait +
-  `StepLR`, `ExponentialLR`, `CosineAnnealingLR`, `LinearLR` (warmup), driven via new
-  `Optimizer::{lr,set_lr}` accessors on `Sgd`/`AdamW`. 4 scheduler tests green.
+   `StepLR`, `ExponentialLR`, `CosineAnnealingLR`, `LinearLR` (warmup), driven via new
+   `Optimizer::{lr,set_lr}` accessors on `Sgd`/`AdamW`. 4 scheduler tests green.
 - `tpt-ml::data` implemented (`crates/tpt-ml/src/data.rs`): `Dataset` trait, `TensorDataset`,
-  `DataLoader` (batched, deterministic epoch shuffle + `reset`), and `stack` for stacked `[B,…]`
-  batches. 3 tests green. "Multi-threaded, Arrow-backed" prefetch deferred (kept dependency-free;
-  core training-loop contract only).
-- **Updated milestone: the Five New Glue Crates now carry 31 unit tests** — tpt-tensor (8),
-  tpt-autograd (3), tpt-ml (14), tpt-hub (2), tpt-runtime (4) — and `cargo build --workspace`
-  remains green (only pre-existing `nom`/`quick-xml` future-incompat warnings + 2 unused-`path`
-  warnings in a forked crate).
-- Remaining Phase 2 deliverables: Conv1d/2d/3d, LayerNorm/BatchNorm, Embedding,
-  MultiHeadAttention, TransformerBlock, and the "train MNIST + small transformer in TPT Script"
-  demo (blocked on the Phase 6 language runtime). `tpt-hub` ONNX/GGUF parsers still deferred.
+   `DataLoader` (batched, deterministic epoch shuffle + `reset`), and `stack` for stacked `[B,…]`
+   batches. 3 tests green. "Multi-threaded, Arrow-backed" prefetch deferred (kept dependency-free;
+   core training-loop contract only).
+- `tpt-ml::activations` (`crates/tpt-ml/src/activations.rs`): `relu` (custom node), `gelu`
+   (sigmoid-approx via `mul`/`sigmoid`), `tanh` (custom node), `sigmoid` re-export. 3 tests green.
+- `tpt-ml::norm` (`crates/tpt-ml/src/norm.rs`): `LayerNorm` (last-axis) + `BatchNorm2d` (training
+   mode) as `Module`s with learned `gamma`/`beta`; reductions + gradients are explicit loops
+   attached as custom autograd nodes (backend has no native reduce/conv). 4 tests green
+   (value sanity + closed-form param-grad checks).
+- `tpt-ml::conv` (`crates/tpt-ml/src/conv.rs`): `Conv2d` (stride, valid padding, optional bias) —
+   explicit forward loop + input/weight/bias gradient node. 3 tests green (output shape,
+   closed-form backward grads, stride+pad). Conv1d/3d deferred (same pattern, different index
+   arithmetic).
+- `tpt-ml::embedding` (`crates/tpt-ml/src/embedding.rs`): `Embedding` lookup with scatter-add
+   gradient node. 2 tests green (lookup + repeated-index scatter gradient).
+- End-to-end integration test (`optim.rs`): `Linear -> ReLU -> Linear -> MSE -> AdamW` trains a
+   tiny MLP to a target (loss converges < 0.05/2000 steps), proving the full stack backprops.
+- **Updated milestone: the Five New Glue Crates now carry 36 unit tests** — tpt-tensor (8),
+   tpt-autograd (3), tpt-ml (27), tpt-hub (2), tpt-runtime (4) — and `cargo build --workspace`
+   remains green (only pre-existing `nom`/`quick-xml` future-incompat + 2 unused-`path` warnings
+   in a forked crate).
+- Remaining Phase 2 deliverables: MultiHeadAttention, TransformerBlock, Conv1d/3d, and the
+   "train MNIST + small transformer in TPT Script" demo (the demo is blocked on the Phase 6
+   language runtime; MHA/Transformer are buildable but need batched matmul / tensor slicing that
+   the current 2-D-only `tpt-tensor` matmul doesn't provide). `tpt-hub` ONNX/GGUF parsers deferred.
+   UPDATE 2026-08-21: MHA, TransformerBlock, Conv1d, and the batched-matmul/slicing primitives
+   are now DONE (see the checklist above); only the Phase-6-blocked TPT Script demo, Conv3d,
+   and the ONNX/GGUF parsers remain.

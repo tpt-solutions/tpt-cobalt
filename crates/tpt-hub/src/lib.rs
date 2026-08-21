@@ -7,5 +7,9 @@
 //! enough to load/round-trip model state produced by `tpt-ml` and friends.
 
 pub mod safetensors;
+pub mod serialize;
 
 pub use safetensors::{HubError, load_safetensors, save_safetensors};
+pub use serialize::{
+    TPTB_MAGIC, load_tptb, save_tptb, tensor_from_json_debug, tensor_to_json_debug,
+};

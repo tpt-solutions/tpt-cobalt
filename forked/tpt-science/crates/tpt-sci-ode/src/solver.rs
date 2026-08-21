@@ -59,7 +59,10 @@ struct StepResult {
 /// Attempt one step of the given method; returns `Ok` on success with the new
 /// state and a local error estimate, or `Err` if the nonlinear solve could not
 /// converge (caller should shrink `h` and retry). `bdf_state`, if `Some`, is the
-/// BDF order/history; it is updated in place on success.
+/// BDF order/history; it is updated in place when the step computes. NOTE: the
+/// caller must roll the state back (restore a pre-step snapshot) unless the
+/// step is ACCEPTED by the error controller — the corrector writes its result
+/// into the history even for steps that are subsequently rejected.
 fn try_step(
     method: Method,
     f: &dyn crate::RhsCallable,
@@ -155,12 +158,19 @@ fn integrate(
         }
 
         let q = method.error_order(bdf_state.as_ref().map(|s| s.order).unwrap_or(1));
+        // Trial semantics: the BDF corrector mutates the Nordsieck history as
+        // soon as it computes, so snapshot it and roll back unless the step is
+        // accepted by the error controller below.
+        let bdf_snapshot = bdf_state.as_ref().map(NordsieckState::clone);
         match try_step(method, f, t, &y, h, bdf_state.as_mut()) {
             Ok(res) => {
                 let err_est = weighted_norm(&res.err, &res.y, rtol, atol);
                 let accept = err_est <= 1.0 || h.abs() <= h_min * 2.0;
                 if !accept {
-                    // Reject: shrink and retry without advancing.
+                    // Reject: restore history, shrink and retry without advancing.
+                    if let (Some(snap), Some(ns)) = (&bdf_snapshot, bdf_state.as_mut()) {
+                        *ns = snap.clone();
+                    }
                     let mut next = h * safety * 0.2_f64.max(err_est.powf(-1.0 / q));
                     if dir < 0.0 {
                         next = -next.abs();
@@ -210,9 +220,15 @@ fn integrate(
                     // it when the local error is eating the whole budget (the
                     // higher-order method is not earning its keep on this
                     // problem / step size).
-                    if ns.order < BDF_MAX_ORDER && err_est < 0.6 {
+                    //
+                    // DIAGNOSTIC GATE: raising the order relies on the next
+                    // Nordsieck column bootstrapped from a single within-step
+                    // finite difference, which under-estimates the true history.
+                    // Gate order raises on a much tighter error so we never
+                    // climb onto unreliable high-order predictions.
+                    if ns.order < BDF_MAX_ORDER && err_est < 0.5 {
                         bdf_steps_at_order += 1;
-                        if bdf_steps_at_order >= 3 {
+                        if bdf_steps_at_order >= 4 {
                             ns.increase_order();
                             bdf_steps_at_order = 0;
                         }
@@ -249,6 +265,10 @@ fn integrate(
                 }
             }
             Err(OdeError::Newton { t: _, residual: _ }) | Err(OdeError::StepTooSmall { t: _ }) => {
+                // Roll the trial history back before retrying smaller.
+                if let (Some(snap), Some(ns)) = (&bdf_snapshot, bdf_state.as_mut()) {
+                    *ns = snap.clone();
+                }
                 let contracted = h * 0.5;
                 if contracted.abs() < h_min {
                     return Err(OdeError::StepTooSmall { t });
@@ -655,6 +675,7 @@ fn binom(n: usize, k: usize) -> f64 {
 }
 
 /// Nordsieck vector state for the variable-order (1–5) BDF.
+#[derive(Clone)]
 struct NordsieckState {
     /// `z[col][comp]`: column-major Nordsieck array, `col = 0..=BDF_MAX_ORDER`.
     z: Vec<Vec<f64>>,

@@ -7190,6 +7190,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "tpt-sci"
+version = "0.1.0"
+dependencies = [
+ "tpt-autograd",
+ "tpt-math-linalg-dense 0.1.0",
+ "tpt-ml",
+ "tpt-tensor",
+]
+
+[[package]]
 name = "tpt-sci-astro"
 version = "0.1.0"
 dependencies = [
