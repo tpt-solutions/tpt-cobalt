@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use arrow::error::ArrowError;
+use tpt_columnar::error::ColumnarError;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -8,8 +8,8 @@ pub enum IoError {
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
 
-    #[error("arrow error: {0}")]
-    Arrow(#[from] ArrowError),
+    #[error("columnar error: {0}")]
+    Columnar(#[from] ColumnarError),
 
     #[error("csv parse error on line {line}: {msg}")]
     Csv { line: usize, msg: String },

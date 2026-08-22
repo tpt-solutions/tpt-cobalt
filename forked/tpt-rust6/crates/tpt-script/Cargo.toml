@@ -14,4 +14,4 @@ tpt-sym = { path = "../tpt-sym" }
 # referenced by path (the root manifest is intentionally left untouched).
 tpt-stat = { path = "../tpt-stat" }
 tpt-viz = { path = "../tpt-viz" }
-arrow = { version = "54" }
+tpt-columnar = { path = "../../../../crates/tpt-columnar" }

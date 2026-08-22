@@ -21,7 +21,7 @@ pub mod prelude {
     pub use crate::{read, read_glob, write};
 }
 
-use arrow::compute::concat_batches;
+use tpt_columnar::compute::concat_batches;
 use tpt_omni::OmniFrame;
 
 /// Read any supported file into an `OmniFrame`, auto-detecting the format.

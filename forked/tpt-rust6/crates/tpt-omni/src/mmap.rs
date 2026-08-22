@@ -6,9 +6,8 @@
 
 use std::fs::File;
 
-use arrow::ipc::reader::FileReader;
-use arrow::ipc::writer::FileWriter;
-use arrow::record_batch::RecordBatch;
+use tpt_columnar::ipc::{FileReader, FileWriter};
+use tpt_columnar::record_batch::RecordBatch;
 
 use crate::error::OmniError;
 use crate::frame::OmniFrame;
@@ -22,7 +21,7 @@ impl OmniFrame {
         let file = File::open(path).map_err(OmniError::Io)?;
         let mmap = unsafe { memmap2::Mmap::map(&file).map_err(OmniError::Io)? };
         let cursor = std::io::Cursor::new(&mmap[..]);
-        let reader = FileReader::try_new(cursor, None).map_err(OmniError::Arrow)?;
+        let reader = FileReader::try_new(cursor).map_err(OmniError::Columnar)?;
         let batch = reader
             .into_iter()
             .next()
@@ -37,9 +36,9 @@ impl OmniFrame {
     /// memory-mappable artifact).
     pub fn write_arrow_ipc(&self, path: &str) -> Result<(), OmniError> {
         let file = File::create(path).map_err(OmniError::Io)?;
-        let mut writer = FileWriter::try_new(file, &self.schema()).map_err(OmniError::Arrow)?;
-        writer.write(self.batch()).map_err(OmniError::Arrow)?;
-        writer.finish().map_err(OmniError::Arrow)?;
+        let mut writer = FileWriter::try_new(file, &self.schema()).map_err(OmniError::Columnar)?;
+        writer.write(self.batch()).map_err(OmniError::Columnar)?;
+        writer.finish().map_err(OmniError::Columnar)?;
         Ok(())
     }
 }
@@ -56,10 +55,10 @@ impl MmapedFrame {
         let file = File::open(path).map_err(OmniError::Io)?;
         let mmap = unsafe { memmap2::Mmap::map(&file).map_err(OmniError::Io)? };
         let cursor = std::io::Cursor::new(&mmap[..]);
-        let reader = FileReader::try_new(cursor, None).map_err(OmniError::Arrow)?;
+        let reader = FileReader::try_new(cursor).map_err(OmniError::Columnar)?;
         let batches = reader
             .collect::<Result<Vec<_>, _>>()
-            .map_err(OmniError::Arrow)?;
+            .map_err(OmniError::Columnar)?;
         if batches.is_empty() {
             return Err(OmniError::ShapeMismatch {
                 flat: 0,
@@ -88,8 +87,8 @@ impl MmapedFrame {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use arrow::array::Float64Array;
-    use arrow::datatypes::{DataType, Field, Schema};
+    use tpt_columnar::array::Float64Array;
+    use tpt_columnar::datatypes::{DataType, Field, Schema};
     use std::sync::Arc;
 
     #[test]

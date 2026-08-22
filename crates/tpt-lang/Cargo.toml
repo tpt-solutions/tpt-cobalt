@@ -1,0 +1,12 @@
+[package]
+name = "tpt-lang"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "TPT script language runtime: dynamic Value model with first-class tensors, numeric promotion, truthiness, and scoped environments"
+readme = "README.md"
+keywords = ["language", "interpreter", "scripting", "runtime", "tensor"]
+categories = ["compilers", "data-structures"]
+
+[dependencies]
+tpt-tensor = { workspace = true }

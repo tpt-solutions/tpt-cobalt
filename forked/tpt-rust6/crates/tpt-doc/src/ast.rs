@@ -160,7 +160,7 @@ impl DocTable {
         for r in 0..batch.num_rows() {
             let mut row = Vec::with_capacity(batch.num_columns());
             for c in 0..batch.num_columns() {
-                let cell = arrow::util::display::array_value_to_string(batch.column(c), r)
+                let cell = tpt_columnar::display::array_value_to_string(batch.column(c).as_ref(), r)
                     .map_err(|e| DocError::Data(e.to_string()))?;
                 row.push(cell);
             }

@@ -30,8 +30,8 @@ pub fn read_hdf5(path: &str) -> Result<OmniFrame, IoError> {
     let names: Vec<String> = (0..cols).map(|c| format!("col{c}")).collect();
     for c in 0..cols {
         let col: Vec<f64> = (0..shape[0]).map(|r| arr[[r, c]]).collect();
-        let array: arrow::array::ArrayRef =
-            std::sync::Arc::new(arrow::array::Float64Array::from(col));
+        let array: tpt_columnar::array::ArrayRef =
+            std::sync::Arc::new(tpt_columnar::array::Float64Array::from(col));
         columns.push((names[c].clone(), array));
     }
     Ok(tpt_omni::OmniFrame::from_columns(columns)?)

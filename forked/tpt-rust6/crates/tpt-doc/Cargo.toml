@@ -9,7 +9,7 @@ description = "Type-checked documents -- the LaTeX killer (doc! macro)"
 [dependencies]
 tpt-sym = { path = "../tpt-sym" }
 tpt-omni = { path = "../tpt-omni" }
-arrow = { version = "54" }
+tpt-columnar = { path = "../../../../crates/tpt-columnar" }
 thiserror = { version = "1" }
 printpdf = { version = "0.7", optional = true }
 zip = { version = "2", optional = true, default-features = false, features = ["deflate"] }

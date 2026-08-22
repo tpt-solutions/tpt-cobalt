@@ -183,10 +183,10 @@ mod omni {
     use tpt_viz::omni::{columns_xy, table_xy};
 
     fn frame() -> OmniFrame {
-        let x: Arc<dyn arrow::array::Array> =
-            Arc::new(arrow::array::Float64Array::from(vec![0.0, 1.0, 2.0]));
-        let y: Arc<dyn arrow::array::Array> =
-            Arc::new(arrow::array::Float64Array::from(vec![3.0, 4.0, 5.0]));
+        let x: Arc<dyn tpt_columnar::array::Array> =
+            Arc::new(tpt_columnar::array::Float64Array::from(vec![0.0, 1.0, 2.0]));
+        let y: Arc<dyn tpt_columnar::array::Array> =
+            Arc::new(tpt_columnar::array::Float64Array::from(vec![3.0, 4.0, 5.0]));
         OmniFrame::from_columns(vec![("x".into(), x), ("y".into(), y)]).unwrap()
     }
 

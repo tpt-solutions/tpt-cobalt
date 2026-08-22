@@ -3,6 +3,10 @@ name = "tpt-sci"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description = "Differentiable scientific computing: ODE integration, FEA linear solves, and physics-informed neural networks with gradients end-to-end"
+readme = "README.md"
+keywords = ["ode", "fea", "pinn", "scientific-computing", "physics"]
+categories = ["science", "mathematics", "simulation"]
 
 [dependencies]
 tpt-tensor = { workspace = true }

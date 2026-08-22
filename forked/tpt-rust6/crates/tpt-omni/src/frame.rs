@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
-use arrow::array::ArrayRef;
-use arrow::datatypes::{Field, Schema};
-use arrow::record_batch::RecordBatch;
+use tpt_columnar::array::ArrayRef;
+use tpt_columnar::datatypes::{Field, Schema};
+use tpt_columnar::record_batch::RecordBatch;
 use ndarray::{ArrayD, ArrayViewD, IxDyn};
 
 use crate::error::OmniError;
@@ -46,7 +46,7 @@ impl OmniFrame {
     pub fn num_cols(&self) -> usize {
         self.batch.num_columns()
     }
-    pub fn schema(&self) -> arrow::datatypes::SchemaRef {
+    pub fn schema(&self) -> tpt_columnar::datatypes::SchemaRef {
         self.batch.schema()
     }
     pub fn column_names(&self) -> Vec<String> {
@@ -126,7 +126,7 @@ impl OmniFrame {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use arrow::array::{Array, Float64Array, Int64Array};
+    use tpt_columnar::array::{Array, Float64Array, Int64Array};
 
     fn sample_frame() -> OmniFrame {
         let score: ArrayRef = Arc::new(Float64Array::from(vec![1.0, 2.0, 3.0, 4.0]));

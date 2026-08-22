@@ -1,4 +1,4 @@
-use arrow::array::{ArrayRef, BooleanArray, Float64Array, Int64Array, StringArray};
+use tpt_columnar::array::{ArrayRef, BooleanArray, Float64Array, Int64Array, StringArray};
 use serde_json::Value;
 use std::sync::Arc;
 use tpt_omni::OmniFrame;
@@ -91,8 +91,8 @@ fn build_array(_name: &str, vals: &[Value]) -> ArrayRef {
 
 /// Build a `serde_json::Value` array-of-objects representation of a frame.
 pub fn to_json_value(frame: &OmniFrame) -> Value {
-    use arrow::array::{Array, BooleanArray, Float64Array, Int64Array, StringArray};
-    use arrow::datatypes::DataType;
+    use tpt_columnar::array::{Array, BooleanArray, Float64Array, Int64Array, StringArray};
+    use tpt_columnar::datatypes::DataType;
 
     let names = frame.column_names();
     let n = frame.batch().num_rows();

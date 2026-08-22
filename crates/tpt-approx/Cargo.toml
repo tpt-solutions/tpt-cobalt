@@ -1,0 +1,10 @@
+[package]
+name = "tpt-approx"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions <contact@tpt.solutions>"]
+description = "Clean-room floating-point comparison macros: relative_eq, abs_diff_eq and assert variants."
+
+[dependencies]

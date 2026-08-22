@@ -7,7 +7,7 @@
 //! `<type-name>` placeholder. Register a renderer for your own type with
 //! `Notebook::set_rendered`.
 
-use arrow::util::display::{ArrayFormatter, FormatOptions};
+use tpt_columnar::display::{ArrayFormatter, FormatOptions};
 use tpt_omni::{Table, Tensor};
 
 use crate::value::Value;

@@ -1,7 +1,5 @@
-use arrow::array::{Array, ArrayRef, PrimitiveArray};
-use arrow::datatypes::{
-    ArrowNativeType, ArrowPrimitiveType, Float32Type, Float64Type, Int32Type, Int64Type,
-};
+use tpt_columnar::array::{Array, ArrayRef, PrimitiveArray};
+use tpt_columnar::datatypes::DataType;
 use ndarray::{ArrayD, ArrayViewD, Dimension, IxDyn, SliceInfo, SliceInfoElem};
 use rayon::prelude::*;
 use std::ops::{Add, Div, Mul, Sub};
@@ -12,28 +10,28 @@ use crate::error::OmniError;
 /// `slice!` macro. Kept as a named alias so the macro and `Tensor::slice` agree.
 pub type Slice = SliceInfo<Vec<SliceInfoElem>, IxDyn, IxDyn>;
 
-/// A primitive numeric type that is also a valid Arrow primitive type.
-pub trait Prim: Copy + Default + Send + Sync + ArrowNativeType + 'static {
-    type Arrow: ArrowPrimitiveType<Native = Self>;
+/// A primitive numeric type with a matching columnar dtype.
+pub trait Prim: Copy + Default + Send + Sync + 'static {
+    const DTYPE: DataType;
 }
 
 impl Prim for f64 {
-    type Arrow = Float64Type;
+    const DTYPE: DataType = DataType::Float64;
 }
 impl Prim for f32 {
-    type Arrow = Float32Type;
+    const DTYPE: DataType = DataType::Float32;
 }
 impl Prim for i64 {
-    type Arrow = Int64Type;
+    const DTYPE: DataType = DataType::Int64;
 }
 impl Prim for i32 {
-    type Arrow = Int32Type;
+    const DTYPE: DataType = DataType::Int32;
 }
 
-/// Extract a zero-copy slice of primitive values from an Arrow array column.
+/// Extract a zero-copy slice of primitive values from a columnar array.
 pub fn values_of<T: Prim>(arr: &ArrayRef) -> Result<&[T], OmniError> {
-    let expected = T::Arrow::DATA_TYPE;
-    if arr.data_type() != &expected {
+    let expected = T::DTYPE;
+    if arr.data_type() != expected {
         return Err(OmniError::NotPrimitive(format!(
             "expected {:?}, found {:?}",
             expected,
@@ -42,9 +40,9 @@ pub fn values_of<T: Prim>(arr: &ArrayRef) -> Result<&[T], OmniError> {
     }
     let prim = arr
         .as_any()
-        .downcast_ref::<PrimitiveArray<T::Arrow>>()
+        .downcast_ref::<PrimitiveArray<T>>()
         .ok_or_else(|| OmniError::NotPrimitive("downcast to primitive failed".into()))?;
-    Ok(prim.values().as_ref())
+    Ok(prim.values())
 }
 
 /// Zero-copy, borrowed view of OmniFrame column data as an N-D tensor.
@@ -296,7 +294,7 @@ impl Tensor<f32> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use arrow::array::{ArrayRef, Float64Array, Int64Array};
+    use tpt_columnar::array::{ArrayRef, Float64Array, Int64Array};
     use std::sync::Arc;
 
     fn tensor_1d(v: Vec<f64>) -> Tensor<f64> {

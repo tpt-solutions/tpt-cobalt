@@ -8,7 +8,7 @@ description = "Reactive, strictly-typed notebook environment (tpt-lab)"
 
 [dependencies]
 tpt-omni = { path = "../tpt-omni" }
-arrow = { version = "54" }
+tpt-columnar = { path = "../../../../crates/tpt-columnar" }
 thiserror = { version = "1" }
 tpt-viz = { path = "../tpt-viz", optional = true }
 # LSP server (feature `lsp`): source analysis + a stdio JSON-RPC server.

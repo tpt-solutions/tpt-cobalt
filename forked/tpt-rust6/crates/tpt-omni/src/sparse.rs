@@ -1,11 +1,22 @@
-use arrow::array::AsArray;
-use arrow::datatypes::{Float64Type, Int64Type};
+use tpt_columnar::array::{ArrayRef, PrimitiveArray};
 use ndarray::{ArrayD, IxDyn};
 
 use crate::error::OmniError;
 use crate::frame::OmniFrame;
 use crate::tensor::Tensor;
 use rayon::prelude::*;
+
+fn int_indices(arr: &ArrayRef) -> Result<Vec<usize>, OmniError> {
+    if let Some(a) = arr.as_any().downcast_ref::<PrimitiveArray<i64>>() {
+        return Ok(a.values().iter().map(|&x| x as usize).collect());
+    }
+    if let Some(a) = arr.as_any().downcast_ref::<PrimitiveArray<u32>>() {
+        return Ok(a.values().iter().map(|&x| x as usize).collect());
+    }
+    Err(OmniError::NotPrimitive(
+        "index columns must be Int64 or UInt32".into(),
+    ))
+}
 
 /// A coordinate-format (COO) sparse matrix.
 #[derive(Clone)]
@@ -43,21 +54,14 @@ impl Sparse {
         let r = frame.column(row)?;
         let c = frame.column(col)?;
         let v = frame.column(val)?;
-        let rows = r
-            .as_primitive::<Int64Type>()
+        let rows = int_indices(&r)?;
+        let cols = int_indices(&c)?;
+        let vals = v
+            .as_any()
+            .downcast_ref::<PrimitiveArray<f64>>()
+            .ok_or_else(|| OmniError::NotPrimitive("values must be Float64".into()))?
             .values()
-            .as_ref()
-            .iter()
-            .map(|x| *x as usize)
-            .collect::<Vec<_>>();
-        let cols = c
-            .as_primitive::<Int64Type>()
-            .values()
-            .as_ref()
-            .iter()
-            .map(|x| *x as usize)
-            .collect::<Vec<_>>();
-        let vals = v.as_primitive::<Float64Type>().values().as_ref().to_vec();
+            .to_vec();
         let nrows = rows.iter().cloned().max().map(|m| m + 1).unwrap_or(0);
         let ncols = cols.iter().cloned().max().map(|m| m + 1).unwrap_or(0);
         Ok(Self::from_coo(rows, cols, vals, (nrows, ncols)))
@@ -164,7 +168,7 @@ impl Sparse {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use arrow::array::{ArrayRef, Float64Array, Int64Array};
+    use tpt_columnar::array::{ArrayRef, Float64Array, Int64Array};
     use std::sync::Arc;
 
     fn sample_frame() -> OmniFrame {

@@ -5,8 +5,8 @@ pub enum OmniError {
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
 
-    #[error("arrow error: {0}")]
-    Arrow(#[from] arrow::error::ArrowError),
+    #[error("columnar error: {0}")]
+    Columnar(#[from] tpt_columnar::error::ColumnarError),
 
     #[error("column '{0}' not found")]
     ColumnNotFound(String),
@@ -98,9 +98,9 @@ mod tests {
 
     #[test]
     fn arrow_error_converts_via_from() {
-        let arrow_err = arrow::error::ArrowError::ComputeError("bad op".to_string());
-        let e: OmniError = arrow_err.into();
-        assert!(matches!(e, OmniError::Arrow(_)));
-        assert!(e.to_string().starts_with("arrow error:"));
+        let col_err = tpt_columnar::error::ColumnarError::ComputeError("bad op".to_string());
+        let e: OmniError = col_err.into();
+        assert!(matches!(e, OmniError::Columnar(_)));
+        assert!(e.to_string().starts_with("columnar error:"));
     }
 }

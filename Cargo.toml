@@ -366,7 +366,7 @@ tpt-io = { path = "forked/tpt-rust6/crates/tpt-io" }
 tpt-sym = { path = "crates/tpt-sym" }
 tpt-grad-macro = { path = "forked/tpt-rust6/crates/tpt-grad-macro" }
 tpt-ui-macro = { path = "crates/tpt-ui-macro" }
-arrow = "54"
+tpt-columnar = { path = "crates/tpt-columnar" }
 ndarray = { version = "0.16", features = ["rayon"] }
 num-complex = "0.4"
 feos = { version = "0.10", default-features = false, features = ["dft"] }

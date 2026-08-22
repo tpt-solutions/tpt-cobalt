@@ -9,10 +9,10 @@ use std::collections::HashMap;
 use std::io::Cursor;
 use std::sync::Arc;
 
-use arrow::array::Array;
-use arrow::datatypes::{DataType, Field, Schema};
-use arrow::ipc::reader::FileReader;
-use arrow::ipc::writer::FileWriter;
+use tpt_columnar::array::Array;
+use tpt_columnar::datatypes::{DataType, Field, Schema};
+use tpt_columnar::ipc::FileReader;
+use tpt_columnar::ipc::writer::FileWriter;
 
 use crate::safetensors::HubError;
 use tpt_tensor::{DType, Tensor};
@@ -40,13 +40,13 @@ pub fn save_arrow_ipc(tensors: &[(&str, &Tensor)]) -> Result<Vec<u8>, HubError> 
         Field::new("shape", DataType::Utf8, false),
         Field::new("data", DataType::Binary, false),
     ]));
-    let batch = arrow::record_batch::RecordBatch::try_new(
+    let batch = tpt_columnar::record_batch::RecordBatch::try_new(
         schema,
         vec![
-            Arc::new(arrow::array::StringArray::from(names)),
-            Arc::new(arrow::array::StringArray::from(dtypes)),
-            Arc::new(arrow::array::StringArray::from(shapes)),
-            Arc::new(arrow::array::BinaryArray::from(data)),
+            Arc::new(tpt_columnar::array::StringArray::from(names)),
+            Arc::new(tpt_columnar::array::StringArray::from(dtypes)),
+            Arc::new(tpt_columnar::array::StringArray::from(shapes)),
+            Arc::new(tpt_columnar::array::BinaryArray::from(data)),
         ],
     )
     .map_err(|e| HubError::UnknownDtype(e.to_string()))?;
@@ -63,13 +63,13 @@ pub fn save_arrow_ipc(tensors: &[(&str, &Tensor)]) -> Result<Vec<u8>, HubError> 
     Ok(buf)
 }
 
-fn str_col<'a>(batch: &'a arrow::record_batch::RecordBatch, name: &str) -> Result<Vec<&'a str>, HubError> {
+fn str_col<'a>(batch: &'a tpt_columnar::record_batch::RecordBatch, name: &str) -> Result<Vec<&'a str>, HubError> {
     let col = batch
         .column_by_name(name)
         .ok_or(HubError::BadHeaderLen)?;
     let a = col
         .as_any()
-        .downcast_ref::<arrow::array::StringArray>()
+        .downcast_ref::<tpt_columnar::array::StringArray>()
         .ok_or(HubError::BadHeaderLen)?;
     Ok((0..a.len()).map(|i| a.value(i)).collect())
 }
@@ -89,7 +89,7 @@ pub fn load_arrow_ipc(bytes: &[u8]) -> Result<HashMap<String, Tensor>, HubError>
             .ok_or(HubError::BadHeaderLen)?;
         let data = data_col
             .as_any()
-            .downcast_ref::<arrow::array::BinaryArray>()
+            .downcast_ref::<tpt_columnar::array::BinaryArray>()
             .ok_or(HubError::BadHeaderLen)?;
         for i in 0..batch.num_rows() {
             let dtype = match dtypes[i] {

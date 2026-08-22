@@ -28,7 +28,7 @@ pub fn column_stats(frame: &OmniFrame, name: &str) -> Option<(f64, f64, f64)> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use arrow::array::{ArrayRef, Float64Array};
+    use tpt_columnar::array::{ArrayRef, Float64Array};
     use std::sync::Arc;
 
     #[test]

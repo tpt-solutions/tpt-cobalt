@@ -1,6 +1,6 @@
-use arrow::array::{BooleanArray, Float64Array, Int64Array, StringArray};
-use arrow::datatypes::{DataType, Field, Schema};
-use arrow::record_batch::RecordBatch;
+use tpt_columnar::array::{BooleanArray, Float64Array, Int64Array, StringArray};
+use tpt_columnar::datatypes::{DataType, Field, Schema};
+use tpt_columnar::record_batch::RecordBatch;
 use std::sync::Arc;
 
 use tpt_omni::prelude::*;

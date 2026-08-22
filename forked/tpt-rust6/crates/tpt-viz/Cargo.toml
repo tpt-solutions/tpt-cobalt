@@ -21,8 +21,7 @@ bytemuck = { version = "1", features = ["derive"], optional = true }
 [dev-dependencies]
 tpt-viz = { path = ".", features = ["omni"] }
 tpt-omni = { path = "../tpt-omni" }
-arrow = { version = "54" }
-
+tpt-columnar = { path = "../../../../crates/tpt-columnar" }
 [features]
 default = []
 # Tensor / OmniFrame / Table adapters.

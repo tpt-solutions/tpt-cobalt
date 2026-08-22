@@ -10,10 +10,10 @@
 
 use std::sync::Arc;
 
-use arrow::array::{
+use tpt_columnar::array::{
     Array, ArrayRef, BooleanArray, Float64Array, Int64Array, StringArray, UInt32Array,
 };
-use arrow::datatypes::DataType;
+use tpt_columnar::datatypes::DataType;
 use tpt_omni::table::Scalar;
 use tpt_omni::{Expr, OmniFrame, Table};
 
@@ -252,7 +252,10 @@ pub trait TableExt: Sized {
 impl TableExt for Table {
     fn try_filter(&self, col: &str, op: &str, value: Value) -> Res<Table> {
         let arr = column(self, col)?;
-        let expr = build_expr(col, op, scalar_for(&value, arr.data_type(), col)?)?;
+        let expr = build_expr(
+            col,
+            op,
+            scalar_for(&value, &arr.data_type(), col)?)?;
         Ok(Table::filter(self, &expr)?)
     }
 
@@ -404,7 +407,7 @@ impl Grouped {
         let mut out: Vec<(String, ArrayRef)> = Vec::new();
         for k in &self.keys {
             let arr = column(&self.table, k)?;
-            out.push((k.clone(), arrow::compute::take(&arr, &idx, None)?));
+            out.push((k.clone(), tpt_columnar::compute::take(arr.as_ref(), &idx)?));
         }
         for (col_name, op) in specs {
             let values = if *col_name == "*" {

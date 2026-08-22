@@ -5644,6 +5644,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "tpt-approx"
+version = "0.1.0"
+
+[[package]]
 name = "tpt-autograd"
 version = "0.1.0"
 dependencies = [
@@ -5666,6 +5670,10 @@ dependencies = [
  "wasm-bindgen",
  "zip",
 ]
+
+[[package]]
+name = "tpt-columnar"
+version = "0.1.0"
 
 [[package]]
 name = "tpt-crucible-uir-adapter"
@@ -6688,6 +6696,13 @@ dependencies = [
  "serde_json",
  "thiserror 1.0.69",
  "tpt-omni",
+]
+
+[[package]]
+name = "tpt-lang"
+version = "0.1.0"
+dependencies = [
+ "tpt-tensor",
 ]
 
 [[package]]

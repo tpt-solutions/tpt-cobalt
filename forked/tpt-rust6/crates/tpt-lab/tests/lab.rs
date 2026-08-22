@@ -3,7 +3,7 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use arrow::array::{ArrayRef, Float64Array, Int64Array, StringArray};
+use tpt_columnar::array::{ArrayRef, Float64Array, Int64Array, StringArray};
 use tpt_lab::prelude::*;
 use tpt_omni::ndarray::{ArrayD, IxDyn};
 use tpt_omni::prelude::{col, OmniFrame, Tensor};

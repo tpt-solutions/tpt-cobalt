@@ -2,9 +2,9 @@
 
 use std::sync::Arc;
 
-use arrow::array::{Float64Array, Int64Array, StringArray};
-use arrow::datatypes::{DataType, Field, Schema};
-use arrow::record_batch::RecordBatch;
+use tpt_columnar::array::{Float64Array, Int64Array, StringArray};
+use tpt_columnar::datatypes::{DataType, Field, Schema};
+use tpt_columnar::record_batch::RecordBatch;
 use tpt_doc::prelude::*;
 use tpt_omni::Table;
 

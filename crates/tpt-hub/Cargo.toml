@@ -3,9 +3,13 @@ name = "tpt-hub"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description = "Model and weight hub: SafeTensors/GGUF/ONNX/TPTB serialization, Arrow IPC bridge, and atomic cross-process tensor sharing"
+readme = "README.md"
+keywords = ["safetensors", "gguf", "onnx", "arrow", "serialization"]
+categories = ["encoding", "parser-implementations"]
 
 [dependencies]
 tpt-tensor = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
-arrow = { workspace = true }
+tpt-columnar = { path = "../tpt-columnar" }

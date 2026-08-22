@@ -76,8 +76,8 @@ impl From<tpt_io::IoError> for ScriptError {
     }
 }
 
-impl From<arrow::error::ArrowError> for ScriptError {
-    fn from(e: arrow::error::ArrowError) -> Self {
+impl From<tpt_columnar::error::ColumnarError> for ScriptError {
+    fn from(e: tpt_columnar::error::ColumnarError) -> Self {
         ScriptError::new("ArrowError", e.to_string())
     }
 }

@@ -1,7 +1,7 @@
-use arrow::array::{Array, ArrayRef, BooleanArray, Float64Array, Int64Array, StringArray};
-use arrow::compute::{and, not, or};
-use arrow::datatypes::{DataType, Field};
-use arrow::record_batch::RecordBatch;
+use tpt_columnar::array::{Array, ArrayRef, BooleanArray, Float64Array, Int64Array, StringArray};
+use tpt_columnar::compute::{and, not, or};
+use tpt_columnar::datatypes::{DataType, Field};
+use tpt_columnar::record_batch::RecordBatch;
 use std::sync::Arc;
 
 use crate::error::OmniError;
@@ -253,7 +253,7 @@ impl Table {
     pub fn filter(&self, expr: &Expr) -> Result<Table, OmniError> {
         let mask = expr.eval(&self.batch)?;
         let cols = (0..self.batch.num_columns())
-            .map(|i| arrow::compute::filter(self.batch.column(i), &mask))
+            .map(|i| tpt_columnar::compute::filter(self.batch.column(i).as_ref(), &mask))
             .collect::<Result<Vec<_>, _>>()?;
         let batch = RecordBatch::try_new(self.batch.schema(), cols)?;
         Ok(Table::new(batch))
@@ -271,7 +271,7 @@ impl Table {
             .iter()
             .map(|&i| self.batch.schema().field(i).clone())
             .collect();
-        let schema = Arc::new(arrow::datatypes::Schema::new(fields));
+        let schema = Arc::new(tpt_columnar::datatypes::Schema::new(fields));
         let batch = RecordBatch::try_new(schema, cols)?;
         Ok(Table::new(batch))
     }
@@ -288,7 +288,7 @@ impl Table {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use arrow::datatypes::Schema;
+    use tpt_columnar::datatypes::Schema;
 
     fn sample() -> Table {
         let score = Float64Array::from(vec![0.1, 0.5, 0.9, 0.4]);

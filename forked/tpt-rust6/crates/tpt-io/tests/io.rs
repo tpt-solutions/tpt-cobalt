@@ -102,9 +102,9 @@ fn parse_line_preserves_multibyte_utf8() {
 
 #[test]
 fn write_csv_errors_on_unsupported_column() {
-    use arrow::array::{ArrayRef, Int32Array};
-    use arrow::datatypes::{DataType, Field, Schema};
-    use arrow::record_batch::RecordBatch;
+    use tpt_columnar::array::{ArrayRef, Int32Array};
+    use tpt_columnar::datatypes::{DataType, Field, Schema};
+    use tpt_columnar::record_batch::RecordBatch;
     use std::sync::Arc;
     let schema = Arc::new(Schema::new(vec![Field::new("x", DataType::Int32, true)]));
     let batch = RecordBatch::try_new(

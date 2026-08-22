@@ -3,6 +3,10 @@ name = "tpt-runtime"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description = "Runtime and system layer: 3-tier allocator, liveness-aware buffer pool, kernel dispatch, and dual-stream execution with event barriers"
+readme = "README.md"
+keywords = ["allocator", "memory-pool", "async", "runtime", "dispatch"]
+categories = ["memory-management", "concurrency"]
 
 [dependencies]
 tpt-tensor = { workspace = true }

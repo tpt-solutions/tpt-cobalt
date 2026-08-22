@@ -32,7 +32,7 @@ tpt-io = { path = "crates/tpt-io" }
 tpt-sym = { path = "crates/tpt-sym" }
 tpt-grad-macro = { path = "crates/tpt-grad-macro" }
 tpt-ui-macro = { path = "crates/tpt-ui-macro" }
-arrow = "54"
+tpt-columnar = { path = "../../crates/tpt-columnar" }
 ndarray = { version = "0.16", features = ["rayon"] }
 rayon = "1"
 thiserror = "1"
