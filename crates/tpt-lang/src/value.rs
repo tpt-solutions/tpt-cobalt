@@ -26,6 +26,32 @@ pub enum Value {
     Dict(Arc<Mutex<HashMap<String, Value>>>),
     /// A first-class tensor (zero indirection to `tpt_tensor::Tensor`).
     Tensor(Tensor),
+    /// A callable: native Rust builtin or interpreted user function.
+    Function(Arc<Function>),
+    /// A named namespace of values.
+    Module(Arc<Module>),
+    /// A trainable model (opaque to scripts; driven via the `train_*`/`predict`
+    /// natives from `tpt_lang::ml`).
+    Model(Arc<Mutex<crate::ml::ModelBox>>),
+}
+
+/// A script-visible function.
+#[derive(Clone)]
+pub enum Function {
+    /// Rust-implemented builtin.
+    Native { name: &'static str, f: NativeFn },
+    /// User-defined: parameter names (body lives in the interpreter).
+    Script { name: String, params: Vec<String> },
+}
+
+/// A native function callable from TPT Script.
+pub type NativeFn = Arc<dyn Fn(&[Value]) -> Result<Value, String> + Send + Sync>;
+
+/// A module: a named namespace of values.
+#[derive(Clone, Debug, Default)]
+pub struct Module {
+    pub name: String,
+    pub members: HashMap<String, Value>,
 }
 
 impl fmt::Debug for Value {
@@ -38,6 +64,9 @@ impl fmt::Debug for Value {
             Value::List(l) => write!(f, "List(len={})", l.lock().unwrap().len()),
             Value::Dict(d) => write!(f, "Dict(len={})", d.lock().unwrap().len()),
             Value::Tensor(t) => write!(f, "Tensor{:?}", t.shape()),
+            Value::Function(_) => write!(f, "<function>"),
+            Value::Module(_) => write!(f, "<module>"),
+            Value::Model(_) => write!(f, "<model>"),
         }
     }
 }
@@ -64,6 +93,8 @@ impl fmt::Display for Value {
                 write!(f, "{{{}}}", rendered.join(", "))
             }
             Value::Tensor(_) => write!(f, "<tensor>"),
+            Value::Function(_) => write!(f, "<function>"),
+            Value::Module(_) => write!(f, "<module>"),
         }
     }
 }
@@ -89,6 +120,13 @@ impl From<Tensor> for Value {
     }
 }
 
+/// Structural/numeric equality (delegates to `crate::ops::values_equal`).
+impl PartialEq for Value {
+    fn eq(&self, other: &Self) -> bool {
+        crate::ops::values_equal(self, other)
+    }
+}
+
 /// Truthiness rules for conditionals and boolean coercion.
 ///
 /// - `Nil` and `Bool(false)` are falsy.
@@ -110,6 +148,33 @@ impl Truthiness for Value {
             Value::List(l) => !l.lock().unwrap().is_empty(),
             Value::Dict(d) => !d.lock().unwrap().is_empty(),
             Value::Tensor(t) => t.to_vec::<f64>().unwrap_or_default().iter().all(|x| *x != 0.0),
+            Value::Function(_) | Value::Module(_) => true,
+        }
+    }
+}
+
+impl Value {
+    /// Type name for error messages.
+    pub fn type_name(&self) -> &'static str {
+        match self {
+            Value::Nil => "nil",
+            Value::Bool(_) => "bool",
+            Value::Num(_) => "num",
+            Value::Str(_) => "str",
+            Value::List(_) => "list",
+            Value::Dict(_) => "dict",
+            Value::Tensor(_) => "tensor",
+            Value::Function(_) => "function",
+            Value::Module(_) => "module",
+        }
+    }
+
+    /// Numeric view (`Num`, `Bool` promotes); tensors are not numbers.
+    pub fn as_num(&self) -> Option<f64> {
+        match self {
+            Value::Num(n) => Some(*n),
+            Value::Bool(b) => Some(if *b { 1.0 } else { 0.0 }),
+            _ => None,
         }
     }
 }

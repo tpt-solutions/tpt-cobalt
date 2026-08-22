@@ -43,6 +43,9 @@ pub fn add(a: &Tensor, b: &Tensor) -> Tensor {
 }
 
 /// Differentiable element-wise mul. `grad_a = grad * b`, `grad_b = grad * a`.
+///
+/// The VJP is composed from tape-connected ops, so gradients themselves carry a
+/// graph and double-backward (second-order derivatives) works.
 pub fn mul(a: &Tensor, b: &Tensor) -> Tensor {
     let result = a.mul(b);
     if !a.requires_grad() && !b.requires_grad() {
@@ -55,16 +58,37 @@ pub fn mul(a: &Tensor, b: &Tensor) -> Tensor {
     let b_shape = b.shape().to_vec();
     let (a_fwd, b_fwd) = (a.clone(), b.clone());
     record(result, parents, move |grad: &Tensor| {
+        // Elementwise product FIRST (in broadcast space, via tape ops so the
+        // second-order path through the forward operand stays connected),
+        // THEN a tracked reduction back to the parent's shape.
         if let Some(an) = &a_node {
-            an.accumulate_grad(&grad.sum_to(&a_shape).mul(&b_fwd));
+            let g = mul(grad, &b_fwd);
+            an.accumulate_grad(&sum_to_tracked(&g, &a_shape));
         }
         if let Some(bn) = &b_node {
-            bn.accumulate_grad(&grad.sum_to(&b_shape).mul(&a_fwd));
+            let g = mul(grad, &a_fwd);
+            bn.accumulate_grad(&sum_to_tracked(&g, &b_shape));
         }
     })
 }
 
+/// Tape-connected transpose: raw view plus a recorded linear node whose
+/// backward transposes the incoming gradient back. Needed so `matmul`'s VJP
+/// keeps its inputs on the tape (the raw `Tensor::transpose` detaches).
+fn transpose_tracked(t: &Tensor) -> Tensor {
+    let result = t.transpose();
+    if !t.requires_grad() {
+        return result;
+    }
+    let node = t.node().expect("autograd node present when requires_grad");
+    let parent = node.clone();
+    record(result, vec![node], move |grad: &Tensor| {
+        parent.accumulate_grad(&grad.transpose());
+    })
+}
+
 /// Differentiable 2-D matrix multiply. `grad_a = grad @ b^T`, `grad_b = a^T @ grad`.
+/// VJP composed from tape ops (double-backward capable).
 pub fn matmul(a: &Tensor, b: &Tensor) -> Tensor {
     let result = a.matmul(b);
     if !a.requires_grad() && !b.requires_grad() {
@@ -73,14 +97,14 @@ pub fn matmul(a: &Tensor, b: &Tensor) -> Tensor {
     let a_node = a.node();
     let b_node = b.node();
     let parents = collect_parents(&a_node, &b_node);
-    let b_t = b.transpose();
-    let a_t = a.transpose();
+    let b_t = transpose_tracked(b);
+    let a_t = transpose_tracked(a);
     record(result, parents, move |grad: &Tensor| {
         if let Some(an) = &a_node {
-            an.accumulate_grad(&grad.matmul(&b_t));
+            an.accumulate_grad(&matmul(grad, &b_t));
         }
         if let Some(bn) = &b_node {
-            an_accumulate(bn, &a_t.matmul(grad));
+            bn.accumulate_grad(&matmul(&a_t, grad));
         }
     })
 }
@@ -116,6 +140,83 @@ fn record(
     result
 }
 
+/// Like [`record`], but the backward closure receives a cell that will be
+/// filled with the output tensor (node attached) *after* recording. Use this
+/// when the VJP must reference the op's own forward output as a tape-connected
+/// operand (e.g. `exp`, `sigmoid`: the gradient expression contains the output,
+/// whose node only exists once recording completes).
+fn record_deferred(
+    mut result: Tensor,
+    parents: Vec<Arc<AutogradNode>>,
+    make_backward: impl FnOnce(Arc<std::sync::Mutex<Option<Tensor>>>) -> Box<dyn Fn(&Tensor) + Send + Sync>,
+) -> Tensor {
+    let cell = Arc::new(std::sync::Mutex::new(None));
+    let backward = make_backward(cell.clone());
+    result.set_node(Arc::new(AutogradNode::new(parents, backward)));
+    *cell.lock().unwrap() = Some(result.clone());
+    result
+}
+
+/// Tape-connected version of `Tensor::sum_to`.
+///
+/// Identity when the shapes already match; otherwise a recorded *linear* node
+/// whose backward broadcasts the incoming gradient back to the original shape.
+/// Keeping this link alive is what preserves second-order connectivity through
+/// broadcasting reduction points (a raw `sum_to` would silently detach the
+/// gradient expression from the upstream graph and truncate double-backward).
+pub(crate) fn sum_to_tracked(t: &Tensor, shape: &[usize]) -> Tensor {
+    if t.shape() == shape {
+        return t.clone();
+    }
+    let result = t.sum_to(shape);
+    if !t.requires_grad() {
+        return result;
+    }
+    let node = t.node().expect("autograd node present when requires_grad");
+    let orig = t.shape().to_vec();
+    let reduced = result.shape().to_vec();
+    let parent = node.clone();
+    record(result, vec![node], move |grad: &Tensor| {
+        let gv = grad.to_vec::<f64>().unwrap();
+        let bi = broadcast_flat_indices(&orig, &reduced);
+        let expanded: Vec<f64> = bi.iter().map(|&s| gv[s]).collect();
+        parent.accumulate_grad(&Tensor::from_typed(expanded).reshape(&orig).unwrap());
+    })
+}
+
+/// Flat target indices into a `source`-shaped row-major buffer for broadcasting
+/// `source` up to `target` (dims aligned from the right; a source dim of 1 or a
+/// missing dim repeats). Inverse of the gather used by `Tensor::sum_to`.
+fn broadcast_flat_indices(target: &[usize], source: &[usize]) -> Vec<usize> {
+    let trank = target.len();
+    let srank = source.len();
+    assert!(srank <= trank, "broadcast: source rank exceeds target rank");
+    let mut strides = vec![1usize; srank];
+    for i in (0..srank.saturating_sub(1)).rev() {
+        strides[i] = strides[i + 1] * source[i + 1];
+    }
+    let total: usize = target.iter().product();
+    let mut out = Vec::with_capacity(total);
+    let mut idx = vec![0usize; trank];
+    for _ in 0..total {
+        let mut s = 0usize;
+        for d in 0..trank {
+            let sd = d + srank - trank;
+            let coord = if source[sd] == 1 { 0 } else { idx[d] };
+            s += coord * strides[sd];
+        }
+        out.push(s);
+        for d in (0..trank).rev() {
+            idx[d] += 1;
+            if idx[d] < target[d] {
+                break;
+            }
+            idx[d] = 0;
+        }
+    }
+    out
+}
+
 /// Register a custom vector-Jacobian product (VJP) for a user op.
 ///
 /// `forward` is the op's output tensor (typically built from raw element values
@@ -140,14 +241,30 @@ pub fn custom_vjp(
 /// gradient into its parents. Leaf gradients are then readable via
 /// [`Tensor::grad`].
 pub fn backward(output: &Tensor) {
+    backward_seeded(output, &Tensor::ones(output.shape(), output.device()));
+}
+
+/// Reverse-mode backward from a (possibly non-scalar) output with an explicit
+/// gradient seed `seed` (i.e. differentiates `sum(output * seed)`).
+pub fn backward_seeded(output: &Tensor, seed: &Tensor) {
     let node = output
         .node()
-        .expect("backward: output tensor has no autograd node (call .with_autograd() on parameters)");
-    node.set_grad(Tensor::ones(output.shape(), output.device()));
+        .expect("backward_seeded: output tensor has no autograd node (call .with_autograd() on parameters)");
+    node.set_grad(seed.clone());
     for n in topo(&node) {
         if let Some(g) = n.grad() {
             n.run_backward(&g);
         }
+    }
+}
+
+/// Clear the accumulated gradient on every node reachable from `root`
+/// (inclusive). Call between a first-order backward and a second-order
+/// (double-backward) pass so the second pass starts from a clean slate.
+pub fn zero_grad(root: &Tensor) {
+    let node = root.node().expect("zero_grad: tensor has no autograd node");
+    for n in topo(&node) {
+        n.zero_grad();
     }
 }
 
@@ -198,7 +315,8 @@ pub fn sub(a: &Tensor, b: &Tensor) -> Tensor {
     )
 }
 
-/// Differentiable element-wise division.
+/// Differentiable element-wise division. VJP composed from tape ops
+/// (double-backward capable).
 pub fn div(a: &Tensor, b: &Tensor) -> Tensor {
     let result = a.div(b);
     if !a.requires_grad() && !b.requires_grad() {
@@ -214,11 +332,14 @@ pub fn div(a: &Tensor, b: &Tensor) -> Tensor {
         collect_parents(&a_node, &b_node),
         move |grad: &Tensor| {
             if let Some(an) = &a_node {
-                an.accumulate_grad(&grad.sum_to(&a_shape).div(&b_fwd));
+                let g = div(grad, &b_fwd);
+                an.accumulate_grad(&sum_to_tracked(&g, &a_shape));
             }
             if let Some(bn) = &b_node {
-                let gb = grad.mul(&a_fwd).div(&b_fwd.mul(&b_fwd)).scale(-1.0);
-                bn.accumulate_grad(&gb.sum_to(&b_shape));
+                let num = mul(grad, &a_fwd);
+                let den = mul(&b_fwd, &b_fwd); // b² — both operands share b's node
+                let g = neg(&div(&num, &den));
+                bn.accumulate_grad(&sum_to_tracked(&g, &b_shape));
             }
         },
     )
@@ -237,21 +358,27 @@ pub fn neg(a: &Tensor) -> Tensor {
     })
 }
 
-/// Differentiable exponential.
+/// Differentiable exponential. VJP composed from tape ops (double-backward
+/// capable: d²eˣ/dx² = eˣ flows through the captured forward output's node).
 pub fn exp(a: &Tensor) -> Tensor {
     let result = a.exp();
     if !a.requires_grad() {
         return result;
     }
     let node = a.node().expect("autograd node present when requires_grad");
-    let out = result.clone();
     let shape = a.shape().to_vec();
-    record(result, vec![node.clone()], move |grad: &Tensor| {
-        node.accumulate_grad(&grad.sum_to(&shape).mul(&out));
+    let parent = node.clone();
+    record_deferred(result, vec![node], move |cell| {
+        Box::new(move |grad: &Tensor| {
+            let out = cell.lock().unwrap().as_ref().unwrap().clone();
+            let g = mul(grad, &out);
+            parent.accumulate_grad(&sum_to_tracked(&g, &shape));
+        })
     })
 }
 
-/// Differentiable natural log.
+/// Differentiable natural log. VJP composed from tape ops (double-backward
+/// capable: d²ln(x)/dx² = −1/x² flows through the captured input's node).
 pub fn log(a: &Tensor) -> Tensor {
     let result = a.log();
     if !a.requires_grad() {
@@ -261,7 +388,8 @@ pub fn log(a: &Tensor) -> Tensor {
     let a_fwd = a.clone();
     let shape = a.shape().to_vec();
     record(result, vec![node.clone()], move |grad: &Tensor| {
-        node.accumulate_grad(&grad.sum_to(&shape).div(&a_fwd));
+        let g = div(grad, &a_fwd);
+        node.accumulate_grad(&sum_to_tracked(&g, &shape));
     })
 }
 
@@ -313,18 +441,24 @@ pub fn mean(a: &Tensor) -> Tensor {
     })
 }
 
-/// Differentiable sigmoid.
+/// Differentiable sigmoid. VJP composed from tape ops (double-backward
+/// capable: σ'' = σ(1−σ)(1−2σ) flows through the captured forward output).
 pub fn sigmoid(a: &Tensor) -> Tensor {
     let result = a.sigmoid();
     if !a.requires_grad() {
         return result;
     }
     let node = a.node().expect("autograd node present when requires_grad");
-    let out = result.clone();
     let shape = a.shape().to_vec();
-    record(result, vec![node.clone()], move |grad: &Tensor| {
-        let one_minus = out.ones_like().sub(&out);
-        node.accumulate_grad(&grad.sum_to(&shape).mul(&out).mul(&one_minus));
+    let dev = a.device();
+    let parent = node.clone();
+    record_deferred(result, vec![node], move |cell| {
+        Box::new(move |grad: &Tensor| {
+            let out = cell.lock().unwrap().as_ref().unwrap().clone();
+            let one_minus = sub(&Tensor::ones(&shape, dev), &out);
+            let g = mul(&mul(grad, &out), &one_minus);
+            parent.accumulate_grad(&sum_to_tracked(&g, &shape));
+        })
     })
 }
 
@@ -502,6 +636,100 @@ mod tests {
         let b = Tensor::from_typed(vec![3.0_f64]);
         let y = add(&a, &b); // neither requires grad -> no node
         assert!(!y.requires_grad());
+    }
+
+    #[test]
+    fn double_backward_exp() {
+        // d/dx e^x = e^x ; d²/dx² e^x = e^x
+        let x = Tensor::from_typed(vec![1.0_f64]).with_autograd();
+        let y = exp(&x);
+        backward(&y);
+        let g = x.grad().unwrap();
+        assert!((g.to_vec::<f64>().unwrap()[0] - std::f64::consts::E).abs() < 1e-12);
+        zero_grad(&y);
+        // second pass: differentiate the gradient expression itself
+        backward_seeded(&g, &Tensor::ones(g.shape(), g.device()));
+        let gg = x.grad().unwrap().to_vec::<f64>().unwrap()[0];
+        assert!(
+            (gg - std::f64::consts::E).abs() < 1e-12,
+            "expected e, got {gg}"
+        );
+    }
+
+    #[test]
+    fn double_backward_square_mixed_partials() {
+        // y = a*a*b ; dy/da = 2ab ; d²y/da² = 2b ; d²y/dadb = 2a
+        let a = Tensor::from_typed(vec![2.0_f64]).with_autograd();
+        let b = Tensor::from_typed(vec![3.0_f64]).with_autograd();
+        let t = mul(&a, &a);
+        let y = mul(&t, &b);
+        backward(&y);
+        let ga = a.grad().unwrap();
+        assert!((ga.to_vec::<f64>().unwrap()[0] - 12.0).abs() < 1e-12); // 2ab
+        let gb = b.grad().unwrap();
+        assert!((gb.to_vec::<f64>().unwrap()[0] - 4.0).abs() < 1e-12); // a²
+        zero_grad(&y);
+        // second pass over dy/da: read off d²y/da² (in a) and d²y/dadb (in b)
+        backward_seeded(&ga, &Tensor::ones(ga.shape(), ga.device()));
+        let d2aa = a.grad().unwrap().to_vec::<f64>().unwrap()[0];
+        assert!((d2aa - 6.0).abs() < 1e-12, "d²y/da² expected 2b=6, got {d2aa}");
+        let d2ab = b.grad().unwrap().to_vec::<f64>().unwrap()[0];
+        assert!((d2ab - 4.0).abs() < 1e-12, "d²y/dadb expected 2a=4, got {d2ab}");
+    }
+
+    #[test]
+    fn double_backward_log_and_sigmoid() {
+        // f(x) = ln(x) : f''(x) = -1/x² ; x=2 -> -0.25
+        let x = Tensor::from_typed(vec![2.0_f64]).with_autograd();
+        let y = log(&x);
+        backward(&y);
+        let g = x.grad().unwrap();
+        assert!((g.to_vec::<f64>().unwrap()[0] - 0.5).abs() < 1e-12);
+        zero_grad(&y);
+        backward_seeded(&g, &Tensor::ones(g.shape(), g.device()));
+        let gg = x.grad().unwrap().to_vec::<f64>().unwrap()[0];
+        assert!((gg + 0.25).abs() < 1e-12, "f''(ln) expected -0.25, got {gg}");
+
+        // sigmoid: s''(x) = s(1-s)(1-2s); x=0.7
+        let z = Tensor::from_typed(vec![0.7_f64]).with_autograd();
+        let s = sigmoid(&z);
+        backward(&s);
+        let sv = s.to_vec::<f64>().unwrap()[0];
+        let gs = z.grad().unwrap();
+        let expect1 = sv * (1.0 - sv);
+        assert!((gs.to_vec::<f64>().unwrap()[0] - expect1).abs() < 1e-12);
+        zero_grad(&s);
+        backward_seeded(&gs, &Tensor::ones(gs.shape(), gs.device()));
+        let expect2 = sv * (1.0 - sv) * (1.0 - 2.0 * sv);
+        let got = z.grad().unwrap().to_vec::<f64>().unwrap()[0];
+        assert!((got - expect2).abs() < 1e-12, "σ'' expected {expect2}, got {got}");
+    }
+
+    #[test]
+    fn double_backward_matmul() {
+        // Y = A @ B with A,B [1,1]: y=a*b; d²y/dadb = 1
+        let a = Tensor::from_typed(vec![2.0_f64])
+            .reshape(&[1, 1])
+            .unwrap()
+            .with_autograd();
+        let b = Tensor::from_typed(vec![3.0_f64])
+            .reshape(&[1, 1])
+            .unwrap()
+            .with_autograd();
+        let y = matmul(&a, &b);
+        backward(&y);
+        let ga = a.grad().unwrap();
+        assert_eq!(ga.to_vec::<f64>().unwrap(), vec![3.0]);
+        zero_grad(&y);
+        backward_seeded(&ga, &Tensor::ones(ga.shape(), ga.device()));
+        assert_eq!(b.grad().unwrap().to_vec::<f64>().unwrap(), vec![1.0]);
+        // d(dy/da)/da = 0 (the seed @ B^T expression does not depend on A):
+        // no second-order path reaches `a`, so its slot stays empty.
+        let dga_da = a
+            .grad()
+            .map(|t| t.to_vec::<f64>().unwrap()[0])
+            .unwrap_or(0.0);
+        assert_eq!(dga_da, 0.0);
     }
 
     #[test]

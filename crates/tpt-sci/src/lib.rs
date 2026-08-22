@@ -11,10 +11,12 @@
 //! - `pinn`: a physics-informed neural-network training demo that fits a
 //!   `tpt-ml` MLP to an ODE by minimizing a residual.
 
+pub mod dem;
 pub mod fea;
 pub mod ode;
 pub mod pinn;
 
+pub use dem::DemSystem;
 pub use fea::solve_linear;
 pub use ode::{euler_step, rk4_step, solve_ivp};
 pub use pinn::train_pinn_ode;

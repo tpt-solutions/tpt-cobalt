@@ -13,3 +13,5 @@ tpt-tensor = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 tpt-columnar = { path = "../tpt-columnar" }
+memmap2 = { workspace = true }
+thiserror = { workspace = true }

@@ -24,8 +24,10 @@ pub mod allocator;
 pub mod dispatch;
 pub mod pool;
 pub mod stream;
+pub mod wgpu_backend;
 
 pub use allocator::{AllocError, Handle, MemoryPool};
 pub use dispatch::{Device, dispatch_add, dispatch_matmul};
 pub use pool::{BufferId, BufferPool, PoolStats};
 pub use stream::{DualStreams, Lane, Stream};
+pub use wgpu_backend::{WgpuContext, WgpuError};

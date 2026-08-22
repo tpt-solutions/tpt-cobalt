@@ -10,3 +10,6 @@ categories = ["compilers", "data-structures"]
 
 [dependencies]
 tpt-tensor = { workspace = true }
+tpt-autograd = { workspace = true }
+tpt-ml = { workspace = true }
+thiserror = { workspace = true }

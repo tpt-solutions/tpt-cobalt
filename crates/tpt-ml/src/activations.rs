@@ -6,7 +6,7 @@
 
 use std::sync::Arc;
 
-use tpt_autograd::{mul, sigmoid};
+use tpt_autograd::{add, mul, sigmoid, sub};
 use tpt_tensor::{AutogradNode, Tensor};
 
 /// ReLU: `max(0, x)`. Custom autograd node (subgradient `1` for `x > 0`, else `0`).
@@ -46,6 +46,8 @@ pub fn gelu(a: &Tensor) -> Tensor {
 }
 
 /// Hyperbolic tangent with a custom autograd node (`d tanh/dx = 1 - tanh^2`).
+/// The VJP is composed from tape-connected ops (`mul`, `sub`) so gradients
+/// carry a graph — second-order derivatives work through `tanh`.
 pub fn tanh(a: &Tensor) -> Tensor {
     let v = a.to_vec::<f64>().unwrap();
     let out: Vec<f64> = v.iter().map(|x| x.tanh()).collect();
@@ -53,17 +55,23 @@ pub fn tanh(a: &Tensor) -> Tensor {
     if a.requires_grad() {
         if let Some(node) = a.node() {
             let shape = a.shape().to_vec();
-            let out2 = out.clone();
+            let dev = a.device();
             let parent = node.clone();
+            let cell: Arc<std::sync::Mutex<Option<Tensor>>> =
+                Arc::new(std::sync::Mutex::new(None));
+            let cell2 = cell.clone();
             let a_node = AutogradNode::new(
                 vec![node],
                 Box::new(move |g: &Tensor| {
-                    let gv = g.to_vec::<f64>().unwrap();
-                    let grad: Vec<f64> = gv.iter().zip(&out2).map(|(x, y)| x * (1.0 - y * y)).collect();
-                    parent.accumulate_grad(&Tensor::from_typed(grad).reshape(&shape).unwrap());
+                    let out_t = cell2.lock().unwrap().as_ref().unwrap().clone();
+                    // d tanh/dx = 1 - tanh² = (1 - out)(1 + out)
+                    let one_minus = sub(&Tensor::ones(&shape, dev), &out_t);
+                    let one_plus = tpt_autograd::add(&out_t, &Tensor::ones(&shape, dev));
+                    parent.accumulate_grad(&mul(&mul(g, &one_minus), &one_plus));
                 }),
             );
             result.set_node(Arc::new(a_node));
+            *cell.lock().unwrap() = Some(result.clone());
         }
     }
     result
@@ -112,5 +120,21 @@ mod tests {
         let g = x.grad().unwrap().to_vec::<f64>().unwrap();
         assert!((g[0] - 1.0).abs() < 1e-12); // 1 - tanh(0)^2 = 1
         assert!((g[1] - (1.0 - (1.0f64.tanh()).powi(2))).abs() < 1e-12);
+    }
+
+    #[test]
+    fn tanh_double_backward() {
+        // d²tanh/dx² = -2·tanh(x)·(1 - tanh²(x)); x = 1
+        use tpt_autograd::{backward_seeded, zero_grad};
+        let x = Tensor::from_typed(vec![1.0_f64]).with_autograd();
+        let y = tanh(&x);
+        backward(&y);
+        let g = x.grad().unwrap();
+        zero_grad(&y);
+        backward_seeded(&g, &Tensor::ones(g.shape(), g.device()));
+        let t = 1.0f64.tanh();
+        let expect = -2.0 * t * (1.0 - t * t);
+        let got = x.grad().unwrap().to_vec::<f64>().unwrap()[0];
+        assert!((got - expect).abs() < 1e-12, "expected {expect}, got {got}");
     }
 }

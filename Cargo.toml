@@ -361,6 +361,8 @@ proptest = "1"
 bincode = "1"
 wide = "0.7"
 criterion = "0.5"
+wgpu = "0.20"
+pollster = "0.3"
 tpt-omni = { path = "forked/tpt-rust6/crates/tpt-omni" }
 tpt-io = { path = "forked/tpt-rust6/crates/tpt-io" }
 tpt-sym = { path = "crates/tpt-sym" }

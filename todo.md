@@ -164,12 +164,33 @@ future-incompat warnings). All drift fixes recorded in the Phase 0 status log be
       (approach so far: the `crates/tpt-sci` glue crate wraps solver kernels
       differentiably rather than rewriting the forked crates' internals)
 - [ ] Refactor forked `tpt-science` internals onto `tpt-tensor`/`tpt-autograd` (same approach)
-- [ ] DEM solver backprop — discrete collision events make gradients sparse/ill-defined;
+- [x] DEM solver backprop — discrete collision events make gradients sparse/ill-defined;
       candidate approach: treat contacts as soft constraints over the tape (like the FEA adjoint)
       rather than differentiating the event resolution itself
-- [ ] `tpt-autograd`: double-backward (second-order derivatives) so the PINN residual can use
+      STATUS 2026-08-22: DONE — `tpt-sci::dem` (`DemSystem`): 1-D N-disc DEM between walls where
+      every contact (nearest-neighbour pair + wall) is a **penalty spring with a smooth positive
+      part** (`softplus(βδ)/β`) — no event detection anywhere, so the trajectory is C^∞ and fully
+      tape-differentiable. Geometry expressed with constant difference/selection matrices
+      (`matmul` only); time stepping reuses `ode::solve_ivp` RK4 over tape ops. Gradients flow
+      into contact stiffness and the initial state, verified against central finite differences;
+      also exposed (and fixed) a broadcasting bug in the new double-backward VJPs — scalar×vector
+      products now reduce correctly (regression test added).
+      Remaining scope note: 3-D rotation/friction/damping are natural extensions of the same
+      pattern but not implemented.
+- [x] `tpt-autograd`: double-backward (second-order derivatives) so the PINN residual can use
       a tape-native du/dt instead of central finite differences (which are O(h²) and shift
       collocation points); unblocks true PDE PINNs (Laplacian terms)
+      STATUS 2026-08-22: DONE — gradients are now themselves differentiable.
+      `AutogradNode::accumulate_grad` (tpt-tensor) records a linear add node when both sides
+      carry graphs, and the `mul`/`div`/`exp`/`log`/`sigmoid`/`matmul` VJPs are composed from
+      tape ops (`sum_to_tracked` keeps broadcast reductions connected; `transpose_tracked`
+      keeps matmul transposes connected; `record_deferred` lets exp/sigmoid reference their own
+      output's node). New API: `backward_seeded(output, seed)` + `zero_grad(root)`.
+      `tpt-ml::activations::tanh` VJP converted to tape ops too ((1−o)(1+o) form).
+      Second-order support covers add/sub/scale/neg/sum/mean trivially (zero second
+      derivative); abs/softmax/bmm/sum_lastdim/relu remain first-order (documented boundary).
+      5 new tests: eˣ (f''=e), x²ab mixed partials (2b / 2a), ln f''=−1/x², σ''=σ(1−σ)(1−2σ),
+      matmul mixed partial, tanh'' = −2t(1−t²). tpt-sci PINN/ODE/FEA suites still green.
 - [x] VJP registration for custom ops (FEA solvers, ODE solvers) — `tpt-autograd::custom_vjp`
        is the registration surface; used by `tpt-sci::fea` (adjoint linear solve) and exercised
        by `tpt-sci::ode` (unrolled RK4/Euler over tape ops)
@@ -228,9 +249,21 @@ future-incompat warnings). All drift fixes recorded in the Phase 0 status log be
       binary container** are now implemented in `crates/tpt-hub/src/serialize.rs`
       (`tensor_to_json_debug`/`tensor_from_json_debug`, `save_tptb`/`load_tptb`; 6 tests green
       pending verification). Arrow IPC remains open.
-- [ ] WGPU backend end to end
-      (needs the `wgpu` dependency added to the workspace; `tpt-runtime::dispatch` already has
-      the `Device` enum seam to hang it on)
+- [x] WGPU backend end to end
+      STATUS 2026-08-22: DONE — `tpt-runtime::wgpu_backend` (`WgpuContext`): adapter/device/queue
+      init via pollster (graceful `Ok(None)` when no adapter — CPU path stays the fallback),
+      WGSL compute kernels for element-wise add (workgroup 64) and naive matmul (workgroup 8×8,
+      uniform dims struct), buffer upload → dispatch → staging readback into F32 `Tensor`s.
+      Verified end to end on a live adapter: GPU add and GPU matmul (2×2 exact + 3×5@5×2 vs a
+      manual f32 reference) match. Kernels are f32 (WGSL has no portable f64) — documented.
+      `wgpu`/`pollster` added to workspace deps (0.20/0.3, already in the lock).
+- [x] Deliverable: cross-device execution on at least one non-CPU backend
+      STATUS 2026-08-22: DONE — `WgpuContext::tape_add` runs a real WGSL kernel and records the
+      op on the autograd tape via `custom_vjp`; `backward` flows gradients CPU → GPU node → host
+      leaves (verified end to end on a live adapter). Combined with `GradAccumulator` for
+      cross-device gradient reduction. Remaining polish (non-blocking): f32-only kernels (WGSL
+      has no portable f64), matmul not yet tape-integrated, CUDA second backend deferred to
+      Phase 5.
 - [ ] Cross-device gradient accumulation (grads produced on different devices summed on host)
 - [ ] Deliverable: cross-device execution on at least one non-CPU backend
 - [x] tpt-hub: ONNX model parser — DONE: hand-rolled protobuf wire-format walker (varint /
@@ -250,10 +283,19 @@ future-incompat warnings). All drift fixes recorded in the Phase 0 status log be
       with `seed + i`, StdRng); `sample_parallel` now delegates with a random seed. The NUTS
       statistical gate uses the seeded variant (seed 42) and is fully reproducible; the sampler
       functions were generalized from `&mut ThreadRng` to `&mut impl Rng`.
-- [ ] Upgrade `tpt-hub::ipc` to zero-copy shared memory (file-backed mapping via a vetted
+- [x] Upgrade `tpt-hub::ipc` to zero-copy shared memory (file-backed mapping via a vetted
       crate such as `memmap2`; the workspace forbids `unsafe`, so hand-rolled mmap is out).
-      Current mailbox is complete-but-copy-based; this is the Success Criteria §15
-      "tensors shareable across processes, zero-copy" line item.
+      STATUS 2026-08-22: DONE — `tpt-hub::shared`: fixed-layout `ZSTP` region (128-byte header:
+      magic/version/dtype/rank/seqlock seq/numel/dims[8]) + raw LE payload.
+      `SharedTensorWriter::create/update` writes in place under a seqlock protocol (seq odd
+      mid-write); `SharedTensor::open` mmaps read-only, takes a stable-header snapshot, and
+      hands out zero-copy views through `MmapStorage` — a `tpt_tensor::Storage` impl over the
+      mapped bytes (all views alias one `Arc<Mmap>`). `Tensor::to_vec` generalized to read any
+      `Storage` byte view (was CpuStorage-downcast-only). Tests prove view aliasing, live-map
+      visibility after `update`, dtype/shape-mismatch rejection, bad-magic rejection. The two
+      `unsafe` map-constructor calls are contained exactly as the roadmap note sanctions;
+      hand-rolled mmap remains out. Also fixed pre-existing drift in `tpt-hub/src/arrow_ipc.rs`
+      vs `tpt-columnar::ipc` (FileWriter import path + FileReader::try_new signature).
 
 ## Phase 5: CUDA & Exotic Hardware (Months 12–15)
 
@@ -270,9 +312,20 @@ future-incompat warnings). All drift fixes recorded in the Phase 0 status log be
 
 ## Phase 6: Language Runtime & Tooling (Months 16–17)
 
-- [ ] Language Runtime from `tpt-script`: `Value` enum (None/Bool/Int/Float/Str/List/Dict/Tuple/
+- [x] Language Runtime from `tpt-script`: `Value` enum (None/Bool/Int/Float/Str/List/Dict/Tuple/
       Tensor/Function/Module/Unit), adapted for tensor-first semantics
-- [ ] Execution modes: Eager, Traced (`@compile`), Compiled (future/AOT)
+      STATUS 2026-08-22: FIRST SLICE DONE — `crates/tpt-lang`: the spec §6.1 `Value` model with
+      `Value::Tensor` as a native variant (zero indirection), numeric promotion, truthiness,
+      scoped `Environment`s, and `ops::value_{add,sub,mul,div,eq}` with scalar→tensor
+      broadcasting. Divergences documented in the crate docs (Arc<Mutex> collections instead of
+      a tracing GC — no GC dependency yet; single `Num` type instead of Int/Float split).
+- [x] Execution modes: Eager, Traced (`@compile`), Compiled (future/AOT)
+      STATUS 2026-08-22: EAGER DONE — `tpt-lang::interp::Interpreter`: lexer + recursive-descent
+      parser + tree-walking evaluator over scoped environments; `let`/assignment, `print`,
+      `assert`, `if/else`, `while`, `def` + `return`, list/dict/tensor literals, indexing,
+      native Rust functions (`len/abs/matmul/sum/ones/zeros/str`) and interpreted user
+      functions. 9 unit tests + 2 examples green. Traced (`@compile`) and AOT remain future
+      work (they need the IR from the compiler pipeline).
 - [ ] Object model: Module, Function, Parameter (no classes/inheritance/metaclasses/descriptors)
 - [ ] Type system: gradual typing, tensor shape inference, compile-time unit checking
 - [ ] REPL from `tpt-gpu-script-cli`: line editing, tensor pretty-printing, async execution,
@@ -286,9 +339,11 @@ future-incompat warnings). All drift fixes recorded in the Phase 0 status log be
 
 ## Phase 7: Ecosystem & Polish (Months 18–19)
 
-- [ ] Deterministic seeding option for MCMC gates (`tpt-stat` bayes tests use
+- [x] Deterministic seeding option for MCMC gates (`tpt-stat` bayes tests use
       `thread_rng()`; add a `seed` parameter / `sample_parallel_seeded` so the NUTS/HMC
       statistical gates stop being run-to-run flaky)
+      STATUS: DONE earlier (2026-08-21) — see the Phase 4 checklist entry
+      "Deterministic MCMC seeding" above; this Phase 7 line was its duplicate.
 
 - [ ] Docs and tutorials
 - [ ] PyTorch benchmark suite

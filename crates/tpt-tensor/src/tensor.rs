@@ -40,16 +40,28 @@ impl AutogradNode {
     }
 
     /// Add `g` into this node's accumulated gradient (gradient accumulation).
+    ///
+    /// When both the existing gradient and `g` carry autograd nodes, the sum is
+    /// itself recorded on the tape (a linear add node), so the accumulated
+    /// gradient remains differentiable — this is what makes double-backward
+    /// (second-order derivatives) work: `tensor.grad()` returns a tensor whose
+    /// value is the gradient and whose graph knows how it was computed.
     pub fn accumulate_grad(&self, g: &Tensor) {
         let mut lock = self.grad.lock().unwrap();
         match lock.take() {
-            Some(existing) => *lock = Some(existing.add(g)),
+            Some(existing) => *lock = Some(add_grad_tensors(&existing, g)),
             None => *lock = Some(g.clone()),
         }
     }
 
     pub fn set_grad(&self, g: Tensor) {
         *self.grad.lock().unwrap() = Some(g);
+    }
+
+    /// Clear this node's accumulated gradient (used between backward passes,
+    /// e.g. before a double-backward / second-order pass).
+    pub fn zero_grad(&self) {
+        *self.grad.lock().unwrap() = None;
     }
 
     pub fn grad(&self) -> Option<Tensor> {
@@ -66,6 +78,34 @@ impl AutogradNode {
     pub fn parents(&self) -> &[Arc<AutogradNode>] {
         &self.parents
     }
+}
+
+/// Sum two gradient tensors, keeping the result on the tape when either side
+/// carries an autograd node (gradient flows equally to both parents — the same
+/// VJP as element-wise addition).
+fn add_grad_tensors(a: &Tensor, b: &Tensor) -> Tensor {
+    let result = a.add(b);
+    let a_node = a.node();
+    let b_node = b.node();
+    if a_node.is_none() && b_node.is_none() {
+        return result;
+    }
+    let parents: Vec<Arc<AutogradNode>> = a_node
+        .iter()
+        .chain(b_node.iter())
+        .cloned()
+        .collect();
+    let closure_parents = parents.clone();
+    let mut node_result = result;
+    node_result.set_node(Arc::new(AutogradNode::new(
+        parents,
+        Box::new(move |grad: &Tensor| {
+            for p in &closure_parents {
+                p.accumulate_grad(grad);
+            }
+        }),
+    )));
+    node_result
 }
 
 /// The universal tensor: every crate consumes this handle.
@@ -219,18 +259,20 @@ impl Tensor {
         self.autograd.as_ref().and_then(|n| n.grad())
     }
 
-    /// Reconstruct the typed element vector from CPU storage, honoring strides
-    /// (so zero-copy views like `transpose` read correctly).
+    /// Reconstruct the typed element vector from storage bytes, honoring
+    /// strides (so zero-copy views like `transpose` read correctly).
+    ///
+    /// Works for any `Storage` (CPU, mmap-shared, GPU-host-staged, ...) since
+    /// it only reads the backend-agnostic byte view.
     pub fn to_vec<T: Num>(&self) -> Result<Vec<T>, DTypeError> {
-        let cpu = self
-            .storage
-            .as_any()
-            .downcast_ref::<CpuStorage>()
-            .ok_or_else(|| {
-                DTypeError::Unsupported("to_vec only supported on CPU storage in this scaffold")
-            })?;
+        if self.storage.dtype() != T::DTYPE {
+            return Err(DTypeError::Mismatch {
+                expected: T::DTYPE.name(),
+                found: self.storage.dtype().name(),
+            });
+        }
         let w = T::DTYPE.size_of();
-        let bytes = cpu.as_bytes();
+        let bytes = self.storage.as_bytes();
         let mut out = Vec::with_capacity(self.numel());
         for off in self.logical_byte_offsets() {
             out.push(T::from_le(&bytes[off..off + w]));

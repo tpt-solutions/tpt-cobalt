@@ -44,6 +44,9 @@ fn kind(v: &Value) -> &'static str {
         Value::List(_) => "list",
         Value::Dict(_) => "dict",
         Value::Tensor(_) => "tensor",
+        Value::Function(_) => "function",
+        Value::Module(_) => "module",
+        Value::Model(_) => "model",
     }
 }
 
@@ -116,7 +119,8 @@ pub fn value_eq(lhs: &Value, rhs: &Value) -> Value {
     Value::Bool(values_equal(lhs, rhs))
 }
 
-fn values_equal(a: &Value, b: &Value) -> bool {
+/// Structural / numeric equality — also exposed as `PartialEq` on `Value`.
+pub fn values_equal(a: &Value, b: &Value) -> bool {
     match (a, b) {
         (Value::Nil, Value::Nil) => true,
         (x, y) if as_num(x).is_some() && as_num(y).is_some() => {

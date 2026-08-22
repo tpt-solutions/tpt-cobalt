@@ -10,4 +10,7 @@ categories = ["memory-management", "concurrency"]
 
 [dependencies]
 tpt-tensor = { workspace = true }
+tpt-autograd = { workspace = true }
 thiserror = { workspace = true }
+wgpu = { workspace = true }
+pollster = { workspace = true }

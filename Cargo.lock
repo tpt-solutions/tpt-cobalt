@@ -168,41 +168,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d3fb67a6e08acf24fdeccbac2cb6ac4305825bd1f117462e0e6f2f193345ad56"
 
 [[package]]
-name = "arrow"
-version = "54.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b5ec52ba94edeed950e4a41f75d35376df196e8cb04437f7280a5aa49f20f796"
-dependencies = [
- "arrow-arith",
- "arrow-array",
- "arrow-buffer",
- "arrow-cast",
- "arrow-csv",
- "arrow-data",
- "arrow-ipc",
- "arrow-json",
- "arrow-ord",
- "arrow-row",
- "arrow-schema",
- "arrow-select",
- "arrow-string",
-]
-
-[[package]]
-name = "arrow-arith"
-version = "54.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8fc766fdacaf804cb10c7c70580254fcdb5d55cdfda2bc57b02baf5223a3af9e"
-dependencies = [
- "arrow-array",
- "arrow-buffer",
- "arrow-data",
- "arrow-schema",
- "chrono",
- "num 0.4.3",
-]
-
-[[package]]
 name = "arrow-array"
 version = "54.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -250,22 +215,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "arrow-csv"
-version = "54.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1644877d8bc9a0ef022d9153dc29375c2bda244c39aec05a91d0e87ccf77995f"
-dependencies = [
- "arrow-array",
- "arrow-cast",
- "arrow-schema",
- "chrono",
- "csv",
- "csv-core",
- "lazy_static",
- "regex",
-]
-
-[[package]]
 name = "arrow-data"
 version = "54.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -291,54 +240,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "arrow-json"
-version = "54.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0ee5b4ca98a7fb2efb9ab3309a5d1c88b5116997ff93f3147efdc1062a6158e9"
-dependencies = [
- "arrow-array",
- "arrow-buffer",
- "arrow-cast",
- "arrow-data",
- "arrow-schema",
- "chrono",
- "half",
- "indexmap",
- "lexical-core 1.0.6",
- "memchr 2.8.3",
- "num 0.4.3",
- "serde",
- "serde_json",
- "simdutf8",
-]
-
-[[package]]
-name = "arrow-ord"
-version = "54.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f0a3334a743bd2a1479dbc635540617a3923b4b2f6870f37357339e6b5363c21"
-dependencies = [
- "arrow-array",
- "arrow-buffer",
- "arrow-data",
- "arrow-schema",
- "arrow-select",
-]
-
-[[package]]
-name = "arrow-row"
-version = "54.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8d1d7a7291d2c5107e92140f75257a99343956871f3d3ab33a7b41532f79cb68"
-dependencies = [
- "arrow-array",
- "arrow-buffer",
- "arrow-data",
- "arrow-schema",
- "half",
-]
-
-[[package]]
 name = "arrow-schema"
 version = "54.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -356,23 +257,6 @@ dependencies = [
  "arrow-data",
  "arrow-schema",
  "num 0.4.3",
-]
-
-[[package]]
-name = "arrow-string"
-version = "54.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a21546b337ab304a32cfc0770f671db7411787586b45b78b4593ae78e64e2b03"
-dependencies = [
- "arrow-array",
- "arrow-buffer",
- "arrow-data",
- "arrow-schema",
- "arrow-select",
- "memchr 2.8.3",
- "num 0.4.3",
- "regex",
- "regex-syntax",
 ]
 
 [[package]]
@@ -6679,9 +6563,11 @@ dependencies = [
 name = "tpt-hub"
 version = "0.1.0"
 dependencies = [
- "arrow",
+ "memmap2",
  "serde",
  "serde_json",
+ "thiserror 2.0.20",
+ "tpt-columnar",
  "tpt-tensor",
 ]
 
@@ -6689,12 +6575,12 @@ dependencies = [
 name = "tpt-io"
 version = "0.1.0"
 dependencies = [
- "arrow",
  "glob",
  "hdf5",
  "parquet",
  "serde_json",
  "thiserror 1.0.69",
+ "tpt-columnar",
  "tpt-omni",
 ]
 
@@ -6702,6 +6588,9 @@ dependencies = [
 name = "tpt-lang"
 version = "0.1.0"
 dependencies = [
+ "thiserror 2.0.20",
+ "tpt-autograd",
+ "tpt-ml",
  "tpt-tensor",
 ]
 
@@ -7096,11 +6985,11 @@ dependencies = [
 name = "tpt-omni"
 version = "0.1.0"
 dependencies = [
- "arrow",
  "memmap2",
  "ndarray 0.16.1",
  "rayon",
  "thiserror 1.0.69",
+ "tpt-columnar",
 ]
 
 [[package]]
@@ -7201,8 +7090,11 @@ dependencies = [
 name = "tpt-runtime"
 version = "0.1.0"
 dependencies = [
+ "pollster",
  "thiserror 2.0.20",
+ "tpt-autograd",
  "tpt-tensor",
+ "wgpu",
 ]
 
 [[package]]
@@ -7336,7 +7228,7 @@ dependencies = [
 name = "tpt-script"
 version = "0.1.0"
 dependencies = [
- "arrow",
+ "tpt-columnar",
  "tpt-io",
  "tpt-omni",
  "tpt-stat",
@@ -7563,9 +7455,9 @@ dependencies = [
 name = "tpt-viz"
 version = "0.1.0"
 dependencies = [
- "arrow",
  "bytemuck",
  "pollster",
+ "tpt-columnar",
  "tpt-omni",
  "tpt-viz",
  "wgpu",

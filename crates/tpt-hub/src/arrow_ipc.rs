@@ -11,8 +11,7 @@ use std::sync::Arc;
 
 use tpt_columnar::array::Array;
 use tpt_columnar::datatypes::{DataType, Field, Schema};
-use tpt_columnar::ipc::FileReader;
-use tpt_columnar::ipc::writer::FileWriter;
+use tpt_columnar::ipc::{FileReader, FileWriter};
 
 use crate::safetensors::HubError;
 use tpt_tensor::{DType, Tensor};
@@ -76,7 +75,7 @@ fn str_col<'a>(batch: &'a tpt_columnar::record_batch::RecordBatch, name: &str) -
 
 /// Parse an Arrow IPC buffer produced by [`save_arrow_ipc`] back into tensors.
 pub fn load_arrow_ipc(bytes: &[u8]) -> Result<HashMap<String, Tensor>, HubError> {
-    let reader = FileReader::try_new(Cursor::new(bytes), None)
+    let reader = FileReader::try_new(Cursor::new(bytes))
         .map_err(|e| HubError::UnknownDtype(e.to_string()))?;
     let mut out = HashMap::new();
     for batch in reader {

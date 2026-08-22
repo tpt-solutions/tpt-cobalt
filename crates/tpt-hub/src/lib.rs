@@ -12,6 +12,7 @@ pub mod ipc;
 pub mod onnx;
 pub mod safetensors;
 pub mod serialize;
+pub mod shared;
 
 pub use arrow_ipc::{load_arrow_ipc, save_arrow_ipc};
 pub use gguf::{save_gguf, GgufFile, GgufTensorInfo, GgufValue};
