@@ -44,6 +44,7 @@ fn kind(v: &Value) -> &'static str {
         Value::List(_) => "list",
         Value::Dict(_) => "dict",
         Value::Tensor(_) => "tensor",
+        Value::Unit(_) => "unit",
         Value::Function(_) => "function",
         Value::Module(_) => "module",
         Value::Model(_) => "model",

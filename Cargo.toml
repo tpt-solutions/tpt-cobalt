@@ -375,6 +375,9 @@ feos = { version = "0.10", default-features = false, features = ["dft"] }
 feos-dft = { version = "0.10", default-features = false }
 tpt-sci-grid = { version = "0.1.0", path = "forked/tpt-science/crates/tpt-sci-grid" }
 tpt-sci-reaction-network = { version = "0.1.0", path = "forked/tpt-science/crates/tpt-sci-reaction-network" }
+tpt-phys-dem = { version = "0.1.0", path = "forked/tpt-physics/crates/tpt-phys-dem" }
+tpt-catalyst = { version = "0.1.0", path = "forked/tpt-crucible/crates/tpt-catalyst", default-features = false }
+tpt-alloy = { version = "0.1.0", path = "forked/tpt-crucible/crates/tpt-alloy" }
 tpt-sci-md = { version = "0.1.0", path = "crates/tpt-sci-md" }
 tpt-sci-dft-classical = { version = "0.1.0", path = "crates/tpt-sci-dft-classical" }
 tpt-sci-kinetics = { version = "0.1.0", path = "crates/tpt-sci-kinetics" }

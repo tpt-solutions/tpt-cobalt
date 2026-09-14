@@ -61,4 +61,27 @@ impl Environment {
     pub fn contains(&self, name: &str) -> bool {
         self.get(name).is_some()
     }
+
+    /// All names visible from this scope (nearest scope last).
+    #[must_use]
+    pub fn names(&self) -> Vec<String> {
+        let mut out = Vec::new();
+        let mut cur = Some(self);
+        while let Some(scope) = cur {
+            for k in scope.values.lock().unwrap().keys() {
+                if !out.contains(k) {
+                    out.push(k.clone());
+                }
+            }
+            cur = scope.parent.as_deref();
+        }
+        out
+    }
+
+    /// A snapshot of *this scope's own* bindings (no ancestors) — used by the
+    /// `module` statement to collect a block's namespace.
+    #[must_use]
+    pub fn own_bindings(&self) -> HashMap<String, Value> {
+        self.values.lock().unwrap().clone()
+    }
 }

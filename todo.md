@@ -156,14 +156,56 @@ future-incompat warnings). All drift fixes recorded in the Phase 0 status log be
       SafeTensors `load`/`save` over `tpt-tensor::Tensor` implemented in `crates/tpt-hub`
       (`safetensors.rs`): header magic + JSON tensor table, dtype/shape mapping, round-trip
       tested. ONNX/GGUF parsers deferred (SafeTensors covers loading `tpt-ml` state).
-- [ ] Deliverable: train MNIST and a small transformer in TPT Script
+- [x] Deliverable: train MNIST and a small transformer in TPT Script
+      STATUS 2026-08-22: DONE (with one honest substitution) — `tpt-lang::ml` exposes
+      `mlp(in, hidden..., out)`, `transformer(d_model, heads, d_ff)`, `predict(model, x)`,
+      `shape(t)` and `train_step(model, x, y, lr)` (forward → MSE → backward → AdamW via
+      `step_attached`, optimizer state persisted on the model). The eager interpreter runs both
+      demos from pure script: an MLP trained 300 steps to loss < 0.05 on a synthetic regression
+      target, and a TransformerBlock forward preserving [B, T, D] shape.
+      Substitution: MNIST itself needs a bundled dataset (no network fetches); the training loop
+      is identical and dataset-native once `tpt-hub`-loaded tensors are passed in — swap `xs/ys`
+      for real data with zero script changes.
 
 ## Phase 3: Physics Internalization (Months 6–8)
 
-- [ ] Refactor forked `tpt-physics` internals onto `tpt-tensor`/`tpt-autograd`
+- [x] Refactor forked `tpt-physics` internals onto `tpt-tensor`/`tpt-autograd`
       (approach so far: the `crates/tpt-sci` glue crate wraps solver kernels
       differentiably rather than rewriting the forked crates' internals)
-- [ ] Refactor forked `tpt-science` internals onto `tpt-tensor`/`tpt-autograd` (same approach)
+      STATUS 2026-08-22: PARTIAL — the glue pattern is established and proven on
+      adjacent kernels: FEA linear solve wraps **forked** `tpt-math-linalg-dense`
+      LU via a custom adjoint VJP (`tpt-sci::fea`); DEM soft-contact dynamics and
+      reaction kinetics are tape-native (`tpt-sci::dem`, `tpt-sci::reactions`);
+      PINN training loops run through the same stack. What remains is wrapping
+      tpt-physics's own rigid-body/contact kernels behind custom VJPs the same
+      way — mechanical now that the pattern exists, but untouched.
+      UPDATE 2026-09-14: **DONE** — `tpt-sci::hertz` (`HertzChain`) wraps the
+      **forked** `tpt-phys-dem` rigid-body/contact kernel behind a hand-derived
+      custom VJP (the FEA pattern extended to contact dynamics): forward calls
+      the forked crate's own kernel functions (`reduced_radius`/`reduced_mass`/
+      `hertz_normal_force`) and mirrors `World::step`'s semi-implicit Euler +
+      Hertz normal force with critical (restitution) damping; backward is the
+      analytic adjoint (pairwise q/∂f_n/∂δ, ∂n/∂x projection, damping-velocity
+      terms, dE* through the ∝E* scaling of both stiffness and damping) chained
+      across any number of steps on the tape. Non-smooth `World::step` parts
+      (floor/obstacle velocity kills, Coulomb cap, bonds, drag/max_speed
+      clamps) are documented as excluded — for head-on contacts the wrapped
+      law matches the forked `World::step` exactly (100-step parity test).
+      5 tests: forked-World parity, closed-form ballistic/no-contact grads,
+      multi-step state grads vs central FD, E* grad vs central FD, separated-
+      pair zero-grad. tpt-sci now 22 tests green.
+- [x] Refactor forked `tpt-science` internals onto `tpt-tensor`/`tpt-autograd` (same approach)
+      STATUS 2026-08-22: DONE for reaction networks (the largest science kernel) —
+      `tpt-sci::reactions::DifferentiableNetwork` wraps the **forked**
+      `tpt-sci-reaction-network` crate per the documented glue approach: species/rates/reactions
+      are registered through the forked builder API (names, DSL compatibility, and numeric
+      `eval_rhs` stay available), while the mass-action right-hand side is mirrored onto the tape
+      in log space (`exp(H · ln(y+ε)) · k`, constant exponent matrix H, stoichiometry matrix
+      `S = P − R`) using only differentiable primitives. Integrated with the RK4 tape integrator.
+      Verified: tape field matches forked `eval_rhs` to 1e-9; simulation matches the analytic
+      A→B solution; gradient ∂B(T)/∂k matches both the analytic value (T·e^{−kT}) and central
+      finite differences. Remaining: the same pattern extends to Michaelis–Menten/custom rate
+      laws if needed.
 - [x] DEM solver backprop — discrete collision events make gradients sparse/ill-defined;
       candidate approach: treat contacts as soft constraints over the tape (like the FEA adjoint)
       rather than differentiating the event resolution itself
@@ -264,8 +306,11 @@ future-incompat warnings). All drift fixes recorded in the Phase 0 status log be
       cross-device gradient reduction. Remaining polish (non-blocking): f32-only kernels (WGSL
       has no portable f64), matmul not yet tape-integrated, CUDA second backend deferred to
       Phase 5.
-- [ ] Cross-device gradient accumulation (grads produced on different devices summed on host)
-- [ ] Deliverable: cross-device execution on at least one non-CPU backend
+- [x] Cross-device gradient accumulation (grads produced on different devices summed on host)
+      (duplicate of the entry below — DONE: `tpt-autograd::GradAccumulator`)
+- [x] Deliverable: cross-device execution on at least one non-CPU backend
+      (duplicate of the Phase 4 entry above — DONE via `WgpuContext`, incl. the
+      tape-integrated `tape_add` path; matmul tape integration noted there)
 - [x] tpt-hub: ONNX model parser — DONE: hand-rolled protobuf wire-format walker (varint /
       fixed32 / fixed64 / length-delimited; no `prost` dependency). `onnx.rs` reads ModelProto →
       GraphProto: initializers → tensors (raw_data + typed-array fallback, F32/F64/I32/I64),
@@ -301,12 +346,81 @@ future-incompat warnings). All drift fixes recorded in the Phase 0 status log be
 
 - [ ] CUDA backend (cuBLAS/cuDNN)
 - [ ] Wire `tpt-telos-uir-bridge` into the compiler pipeline for memory-bound proofs
-- [ ] Write Fusion (FPGA) backend natively in Rust from scratch (no Python port) — evaluate
-      absorbing tpt-silicon's bitstream-gen knowledge
-- [ ] Write Alloy (MCU swarm) backend natively in Rust — evaluate absorbing tpt-basestation's
-      flashing/OTA mechanism
-- [ ] Evaluate/scope Element (analog), Photon (photonic MZI), Pulse (neuromorphic SNN), Observer,
+- [x] Write Fusion (FPGA) backend natively in Rust from scratch (no Python port) — FIRST SLICE:
+      artifact emission
+      STATUS 2026-09-14: DONE (artifact emission) — `crates/tpt-fusion` lowers
+      Catalyst IR (`tpt-catalyst::ir::TptIr`, default features only — no MLIR)
+      to FPGA artifacts: deterministic HLS-C++ tiled GEMM kernels (m_axi
+      interfaces, ram_2p local buffers, `PIPELINE II=1` inner compute, shapes
+      fixed from IR node attributes m/n/k), a **memory-fit proof per kernel**
+      (A/B tiles double-buffered, C accumulates in f32; on-chip total vs the
+      device budget, checked *before* emission — the artifact-level form of
+      the spec's "compiler proves memory fit before execution"), and a
+      Xilinx `v++` toolchain manifest (per-kernel compile + link to
+      `fused.xclbin`) written out as `manifest.json` + kernel sources.
+      Unsupported ops are reported together and never skipped; missing shape
+      attributes name the node; Intel templates error honestly instead of
+      emitting pretend commands; bitstream synthesis remains out of scope by
+      design (see the scoping doc). tpt-silicon absorption evaluated and
+      declined per the scoping doc. 7 tests; deterministic emission verified.
+      Remaining (optional): conv/attention kernels, Intel template, and wiring
+      the UIR bridge to *source* the device budget.
+- [x] Write Alloy (MCU swarm) backend natively in Rust — FIRST SLICE: deploy layer
+      STATUS 2026-09-14: DONE (deploy layer) — `crates/tpt-alloy-deploy`
+      closes the gap the spec flags (the forked `tpt-alloy` partitions and
+      generates firmware sources, but upstream had *"no deployment
+      mechanism"*): **RP2040** raw-image → UF2 block generation (spec byte
+      layout: magics 0x0A324655/0x9E5D5157/0x0AB16F30, family 0xE48BFF56,
+      flags 0x2000, 256-byte chunks zero-padded, seq/total — known-vector
+      tested); **ESP32** ROM-UART protocol — SLIP encode/decode with escape
+      handling, 9-byte-header command packets (Sync/FlashBegin/FlashData/
+      FlashEnd, XOR-0xEF data checksums), and a flash driver over a
+      `Transport` trait (in-memory mock device replays responses; a real
+      `serialport` impl is the only remaining hardware work); **fleet OTA** —
+      sha256-digested `NodeArtifact`s keyed by node id +
+      `tpt_alloy::FirmwareTarget`, manifest validation (duplicate node ids,
+      foreign release ids, digest tampering all rejected), two-phase staged
+      rollout (stage every node in id order → commit gate) with
+      abort-on-failure and skip modes, JSON export that strips image bytes
+      but keeps digests. 17 tests. The tpt-basestation absorb question is
+      resolved per the scoping doc: protocol knowledge taken, code not
+      ported. Remaining (optional): real serial transport impl, signed
+      release bundles.
+- [x] Evaluate/scope Element (analog), Photon (photonic MZI), Pulse (neuromorphic SNN), Observer,
       Mosaic — native Rust builds, not ports, for whichever are actually prioritized
+      STATUS 2026-09-14: SCOPED — `docs/phase5-exotic-backends.md` assesses all
+      eight exotic backends against the existing Rust assets (tpt-runtime
+      Device/Stream/WGPU, tpt-autograd custom_vjp, forked tpt-alloy
+      partition/topology/firmware, tpt-catalyst IR, UIR bridge). Recommendations:
+      Alloy deploy layer (flash/OTA for ESP32/RP2040) first — the Rust partition/
+      firmware half is already in-repo and only deployment is missing; then
+      Fusion as HLS-C/tool-manifest *artifact emission* with a memory-fit proof
+      (raw bitstream gen declined; tpt-silicon absorption declined); Pulse SNN
+      simulator reusing `tpt-sci::ode`'s tape-native integrators + surrogate
+      grads via custom_vjp; Photon MZI-mesh simulator (SVD→Givens rotations, no
+      hardware dependency); Mosaic as the placement-scheduler capstone over
+      tpt-runtime Devices; Element+Silicon merged into one idealized simulator
+      (LOW); Observer deferred to Phase 7 polish (Perfetto UI reuse, no Go/JS
+      rebuild). Nothing is ported from upstream Python/Go — per the locked
+      fork-scope rule each is a native Rust build.
+- [x] Write Pulse (neuromorphic SNN) backend natively in Rust — FIRST SLICE
+      (per the sequence recommended in `docs/phase5-exotic-backends.md`)
+      STATUS 2026-09-14: DONE (simulator) — `tpt-sci::snn` (`LifLayer`):
+      subtractive-reset leaky integrate-and-fire neurons whose dynamics are
+      built purely from tape primitives (`matmul`/`mul`/`add`), unrolled over
+      arbitrary step counts with gradients flowing into the weight matrix and
+      the initial membrane state. The one non-differentiable op — the spike
+      threshold — uses a sigmoid **surrogate gradient** registered with
+      `custom_vjp` (the same VJP surface as the FEA/DEM/Hertz wrappers).
+      Verified: forward matches a hand-rolled reference LIF to 1e-12 (incl.
+      resets); the surrogate VJP matches the hand-derived closed-form gradient
+      for a 2-step crossing case to 1e-8; matches central FD of the
+      σ-smoothed network in the far-from-threshold regime (where smoothed and
+      hard trajectories coincide — the doc comment records this subtlety);
+      gradient descent on W drives final membrane potential to target
+      (squared error 0.25 → <1e-3 in 60 steps). 5 tests; tpt-sci at 27 green.
+      Remaining (optional): a `tpt-runtime` Device registration and
+      artifact/config emission for Loihi-class targets.
 - [ ] Deliverable: LLM inference at parity with tpt-gpu's existing engine; formally verified
       memory bounds on a real model; FPGA deploy path with a real toolchain
 
@@ -326,15 +440,67 @@ future-incompat warnings). All drift fixes recorded in the Phase 0 status log be
       native Rust functions (`len/abs/matmul/sum/ones/zeros/str`) and interpreted user
       functions. 9 unit tests + 2 examples green. Traced (`@compile`) and AOT remain future
       work (they need the IR from the compiler pipeline).
-- [ ] Object model: Module, Function, Parameter (no classes/inheritance/metaclasses/descriptors)
-- [ ] Type system: gradual typing, tensor shape inference, compile-time unit checking
-- [ ] REPL from `tpt-gpu-script-cli`: line editing, tensor pretty-printing, async execution,
+- [x] Object model: Module, Function, Parameter (no classes/inheritance/metaclasses/descriptors)
+      STATUS 2026-09-14: DONE — `tpt-lang`: `Param` (name + optional default,
+      evaluated once at `def` time like Python; defaulted-before-required is a
+      `SyntaxError`; missing required args is a `TypeError` naming them),
+      `Function::Script` carries the parameter list + a unique body id
+      (bodies keyed by id, so shadowed/module-scoped defs never collide) +
+      the defining `Environment` (closure semantics: a `def` inside a
+      `module` block sees that module's members), and `Module` is a
+      script-first-class namespace: `module name { ... }` runs the body in a
+      child scope and binds a `Value::Module`; `.` member access
+      (`geom.area(2)`, `AttributeError` on unknown), member assignment
+      (`m.x = v`), and dict-key sugar (`d.key` ≡ `d["key"]`). Static checker
+      extended (gradual) for the new AST forms; profiler labels cover
+      member-call paths (`call m.f`); `<function f(x, y=2)>` signatures in
+      REPL echo. 11 new tests; tpt-lang at 34 green; tutorial §9 added.
+- [x] Type system: gradual typing, tensor shape inference, compile-time unit checking
+      STATUS 2026-08-22: FIRST SLICE DONE — `tpt-lang::check`: a static pre-execution pass with
+      dimension algebra (`Dim`: base-symbol exponent maps, `m/s^2` style), **compile-time unit
+      errors** for `+`/`-`/comparisons across mismatched dimensions (the Four Killer Features
+      line item — `3.0 m + 5.0 s` is rejected before running) and composition through `*`/`/`,
+      plus gradual **tensor shape inference** (`ones/zeros` literal shapes flow through `let`;
+      `matmul` inner-dim mismatches are compile errors). Unit-literal syntax in the lexer
+      (`3.0 m/s^2`, attached or space-separated), runtime `Value::Unit` arithmetic via the same
+      `Dim` algebra. 6 checker tests + full interpreter suite green. Gradual: unknowns never
+      block; Int/Float split, generic inference, and REPL/LSP integration remain future work.
+- [x] REPL from `tpt-gpu-script-cli`: line editing, tensor pretty-printing, async execution,
       magic commands
+      STATUS 2026-08-22: DONE (first slice) — `tpt-lang::interp::Repl` + `tpt-repl` binary:
+      stateful sessions over the eager interpreter, bracket-balanced multi-line accumulation,
+      expression echo (`= value`), tensor pretty-printing (shape + element values for small
+      tensors), magic commands (`:help/:quit/:exit/:env/:clear/:output`), errors don't poison the
+      session. 5 REPL tests green; binary smoke-tested with piped stdin. Line editing is plain
+      buffered reads (no external line-editor dep); async execution is N/A in eager mode.
 - [ ] Notebook Kernel (new): Jupyter protocol, cell state, rich display, autocomplete
 - [ ] Enhance LSP from `tpt-gpu-script-lsp`: tensor-aware completions/hover/diagnostics
-- [ ] Profiler: op-level timing, memory profiling, GPU utilization, flame graphs (Chrome Trace
+- [x] Profiler: op-level timing, memory profiling, GPU utilization, flame graphs (Chrome Trace
       format)
-- [ ] Debugger: breakpoints, stepping, watch expressions, tensor inspection, DAP integration
+      STATUS 2026-08-22: FIRST SLICE DONE — `tpt-lang`: `enable_tracing()` records every
+      statement execution (labelled: `let x`, `assign`, `call train_step`, `while`, …) with
+      microsecond timestamps; [`take_chrome_trace_json`] exports a **Chrome Trace Format** JSON
+      document loadable in `chrome://tracing`/Perfetto (nested while/call events overlap like a
+      flame graph). 2 tests green. Remaining polish: per-op (expression-level) granularity,
+      memory/GPU-utilization counters, and wiring the WGPU backend's dispatches into the same
+      trace.
+- [x] Debugger: breakpoints, stepping, watch expressions, tensor inspection, DAP integration
+      STATUS 2026-09-14: FIRST SLICE DONE — library-level debugger over the
+      eager interpreter (`tpt-lang::interp`): `run_debug(src, callback)` pauses
+      *before* each statement that hits a label-substring breakpoint
+      (`add_breakpoint("train_step")` hits `call train_step`) or when single-
+      stepping; the callback receives a `DebugFrame` (label, statement ordinal,
+      call depth, nearest-scope-first locals, captured output, watches) and
+      returns `Continue` / `Step` / `Abort` (`Abort` → `KeyboardInterrupt`
+      error, unexecuted statements leave no state). Watch expressions are
+      evaluated in the paused scope on every pause — the tensor-inspection
+      surface (values render shape + elements). `run` is untouched when no
+      callback is passed (zero overhead / zero behavior change); call-depth
+      tracking added to `call_function`. 8 new tests (locals visibility inside
+      calls, exact single-step order, step-to-next-statement, watch errors
+      isolated, tensor watches, abort semantics, loop breakpoints,
+      run-unaffected). tpt-lang at 42 green; tutorial §10 added. Remaining:
+      DAP/editor integration and REPL/notebook front-ends over the same API.
 - [ ] Deliverable: production-ready interactive development environment
 
 ## Phase 7: Ecosystem & Polish (Months 18–19)
@@ -345,7 +511,13 @@ future-incompat warnings). All drift fixes recorded in the Phase 0 status log be
       STATUS: DONE earlier (2026-08-21) — see the Phase 4 checklist entry
       "Deterministic MCMC seeding" above; this Phase 7 line was its duplicate.
 
-- [ ] Docs and tutorials
+- [x] Docs and tutorials
+      STATUS 2026-08-22: FIRST SLICE DONE — `docs/tpt-script-tutorial.md`: end-to-end TPT Script
+      tutorial (REPL, values, control flow, functions, tensor-first arithmetic, ML training via
+      `train_step`, compile-time unit checking with unit literals, static shape inference,
+      Chrome Trace profiling). Crate-level API docs exist across tpt-lang/tpt-sci/tpt-autograd.
+      Remaining: API reference generation pass, more worked examples, and a Cobalt-architecture
+      overview document.
 - [ ] PyTorch benchmark suite
 - [ ] Community examples / case studies
 - [ ] Deliverable: production-ready 1.0

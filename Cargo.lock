@@ -5528,6 +5528,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "tpt-alloy-deploy"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tpt-alloy",
+]
+
+[[package]]
 name = "tpt-approx"
 version = "0.1.0"
 
@@ -6343,6 +6353,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "tpt-fusion"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tpt-catalyst",
+]
+
+[[package]]
 name = "tpt-gpu-bench"
 version = "0.1.0"
 dependencies = [
@@ -7104,6 +7123,8 @@ dependencies = [
  "tpt-autograd",
  "tpt-math-linalg-dense 0.1.0",
  "tpt-ml",
+ "tpt-phys-dem",
+ "tpt-sci-reaction-network",
  "tpt-tensor",
 ]
 

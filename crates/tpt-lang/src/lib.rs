@@ -10,13 +10,17 @@
 //! semantics without adding a GC dependency yet; cycles will leak until a GC
 //! lands.
 
+pub mod check;
 mod env;
 pub mod interp;
 pub mod ml;
 mod ops;
 mod value;
 
+pub use check::{CheckError, Dim};
 pub use env::Environment;
-pub use interp::{Interpreter, InterpreterError};
+pub use interp::{
+    Interpreter, InterpreterError, Repl, ReplOutcome,
+};
 pub use ops::{value_add, value_div, value_eq, value_mul, value_sub, LangError};
 pub use value::{Truthiness, Value};

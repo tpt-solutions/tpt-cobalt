@@ -133,11 +133,15 @@ pub fn install(interp: &mut Interpreter) {
         let loss = loss::mse(&pred, &y);
         backward(&loss);
         let loss_value = loss.to_vec::<f64>().unwrap()[0];
-        let opt = guard.opt.get_or_insert_with(|| tpt_ml::optim::AdamW::new(lr));
-        opt.set_lr(lr);
-        let mut params = guard.model.parameters();
-        params = step_attached(opt.as_mut(), params);
-        guard.model.set_parameters(params);
+        if guard.opt.is_none() {
+            guard.opt = Some(tpt_ml::optim::AdamW::new(lr));
+        }
+        // split borrows: optimizer and model are separate fields
+        let ModelBox { model, opt } = &mut *guard;
+        opt.as_mut().map(|o| o.set_lr(lr));
+        let mut params = model.parameters();
+        params = step_attached(opt.as_mut().unwrap(), params);
+        model.set_parameters(params);
         Ok(Value::Num(loss_value))
     });
 }

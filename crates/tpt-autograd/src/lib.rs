@@ -109,11 +109,6 @@ pub fn matmul(a: &Tensor, b: &Tensor) -> Tensor {
     })
 }
 
-#[inline]
-fn an_accumulate(node: &Arc<AutogradNode>, g: &Tensor) {
-    node.accumulate_grad(g);
-}
-
 /// Gather the require-grad parent nodes into a `Vec` for the tape.
 fn collect_parents(
     a: &Option<Arc<AutogradNode>>,

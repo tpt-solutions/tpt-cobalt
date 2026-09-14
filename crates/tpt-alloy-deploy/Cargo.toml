@@ -1,0 +1,15 @@
+[package]
+name = "tpt-alloy-deploy"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Alloy deploy layer: RP2040 UF2 generation, ESP32 ROM-UART flash framing, and staged OTA rollout manifests for MCU swarms"
+readme = "README.md"
+keywords = ["embedded", "ota", "uf2", "esp32", "mcu"]
+categories = ["embedded", "hardware-support"]
+
+[dependencies]
+tpt-alloy = { workspace = true }
+sha2 = { version = "0.10" }
+serde = { version = "1", features = ["derive"] }
+serde_json = { workspace = true }

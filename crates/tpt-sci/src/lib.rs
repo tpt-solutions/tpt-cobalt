@@ -10,13 +10,23 @@
 //!   any static FEA/PDE discretization), with an adjoint VJP.
 //! - `pinn`: a physics-informed neural-network training demo that fits a
 //!   `tpt-ml` MLP to an ODE by minimizing a residual.
+//! - `reactions`: differentiable reaction kinetics wrapping the forked
+//!   `tpt-sci-reaction-network` crate.
+//! - `hertz`: differentiable Hertz–Mindlin rigid-body contact wrapping the
+//!   forked `tpt-phys-dem` kernels behind a hand-derived custom VJP.
 
 pub mod dem;
 pub mod fea;
+pub mod hertz;
 pub mod ode;
 pub mod pinn;
+pub mod reactions;
+pub mod snn;
 
 pub use dem::DemSystem;
+pub use hertz::HertzChain;
+pub use reactions::DifferentiableNetwork;
+pub use snn::LifLayer;
 pub use fea::solve_linear;
 pub use ode::{euler_step, rk4_step, solve_ivp};
 pub use pinn::train_pinn_ode;

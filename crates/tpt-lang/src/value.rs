@@ -33,6 +33,16 @@ pub enum Value {
     /// A trainable model (opaque to scripts; driven via the `train_*`/`predict`
     /// natives from `tpt_lang::ml`).
     Model(Arc<Mutex<crate::ml::ModelBox>>),
+    /// A unit-aware numeric literal/value (e.g. `9.81 m/s^2`).
+    Unit(Arc<UnitValue>),
+}
+
+/// A unit-aware value: numeric payload plus its dimension tag (e.g. `"m/s"`).
+/// Compile-time unit *checking* lives in [`crate::check`].
+#[derive(Clone, Debug)]
+pub struct UnitValue {
+    pub value: f64,
+    pub dim: String,
 }
 
 /// A script-visible function.
@@ -40,18 +50,97 @@ pub enum Value {
 pub enum Function {
     /// Rust-implemented builtin.
     Native { name: &'static str, f: NativeFn },
-    /// User-defined: parameter names (body lives in the interpreter).
-    Script { name: String, params: Vec<String> },
+    /// User-defined: parameter list plus the interpreter-internal body id
+    /// (bodies live in the interpreter, keyed by id so module-scoped and
+    /// shadowed definitions cannot collide by name). The defining
+    /// environment is captured so functions close over their scope — a
+    /// `def` inside a `module` block sees that module's members.
+    Script {
+        name: String,
+        params: Vec<Param>,
+        id: u64,
+        env: Arc<crate::env::Environment>,
+    },
+}
+
+impl Function {
+    /// `<function f(x, y=2)>`-style rendering (REPL echo, error messages).
+    pub fn signature(&self) -> String {
+        match self {
+            Function::Native { name, .. } => format!("<function {name}>"),
+            Function::Script { name, params, .. } => {
+                let ps: Vec<String> = params.iter().map(|p| p.display()).collect();
+                format!("<function {}({})>", name, ps.join(", "))
+            }
+        }
+    }
+}
+
+/// A function parameter: name plus optional default value. Defaults are
+/// evaluated once at `def` time (Python semantics), not per call.
+#[derive(Clone, Debug)]
+pub struct Param {
+    pub name: String,
+    pub default: Option<Value>,
+}
+
+impl Param {
+    /// `x` or `y=2` rendering for signatures.
+    pub fn display(&self) -> String {
+        match &self.default {
+            None => self.name.clone(),
+            Some(v) => format!("{}={}", self.name, v),
+        }
+    }
 }
 
 /// A native function callable from TPT Script.
 pub type NativeFn = Arc<dyn Fn(&[Value]) -> Result<Value, String> + Send + Sync>;
 
-/// A module: a named namespace of values.
-#[derive(Clone, Debug, Default)]
+/// A module: a named namespace of values (the spec's object model has
+/// modules and functions but deliberately no classes/inheritance). Members
+/// are shared-mutable like List/Dict, so scripts can attach values to an
+/// existing module (`m.x = v`).
+#[derive(Debug, Default)]
 pub struct Module {
     pub name: String,
-    pub members: HashMap<String, Value>,
+    pub members: Mutex<HashMap<String, Value>>,
+}
+
+impl Module {
+    /// An empty module with the given name.
+    pub fn new(name: impl Into<String>) -> Self {
+        Module {
+            name: name.into(),
+            members: Mutex::new(HashMap::new()),
+        }
+    }
+
+    /// A module with pre-built members (e.g. a snapshot of a `module`
+    /// statement's scope).
+    pub fn with_members(name: impl Into<String>, members: HashMap<String, Value>) -> Self {
+        Module {
+            name: name.into(),
+            members: Mutex::new(members),
+        }
+    }
+
+    /// Member lookup.
+    pub fn get(&self, member: &str) -> Option<Value> {
+        self.members.lock().unwrap().get(member).cloned()
+    }
+
+    /// Define or overwrite a member.
+    pub fn set(&self, member: impl Into<String>, value: Value) {
+        self.members.lock().unwrap().insert(member.into(), value);
+    }
+
+    /// Sorted member names.
+    pub fn member_names(&self) -> Vec<String> {
+        let mut names: Vec<String> = self.members.lock().unwrap().keys().cloned().collect();
+        names.sort();
+        names
+    }
 }
 
 impl fmt::Debug for Value {
@@ -64,9 +153,10 @@ impl fmt::Debug for Value {
             Value::List(l) => write!(f, "List(len={})", l.lock().unwrap().len()),
             Value::Dict(d) => write!(f, "Dict(len={})", d.lock().unwrap().len()),
             Value::Tensor(t) => write!(f, "Tensor{:?}", t.shape()),
-            Value::Function(_) => write!(f, "<function>"),
-            Value::Module(_) => write!(f, "<module>"),
+            Value::Function(fun) => write!(f, "{}", fun.signature()),
+            Value::Module(m) => write!(f, "<module {}>", m.name),
             Value::Model(_) => write!(f, "<model>"),
+            Value::Unit(u) => write!(f, "{}{}", u.value, u.dim),
         }
     }
 }
@@ -92,9 +182,21 @@ impl fmt::Display for Value {
                     keys.iter().map(|k| format!("{k}: {}", map[*k].to_string())).collect();
                 write!(f, "{{{}}}", rendered.join(", "))
             }
-            Value::Tensor(_) => write!(f, "<tensor>"),
-            Value::Function(_) => write!(f, "<function>"),
-            Value::Module(_) => write!(f, "<module>"),
+            Value::Tensor(t) => {
+                write!(f, "Tensor{:?} ", t.shape())?;
+                // pretty-print small tensors element-wise
+                if t.numel() <= 16 {
+                    if let Ok(v) = t.to_vec::<f64>() {
+                        let rendered: Vec<String> = v.iter().map(|x| format!("{x}")).collect();
+                        write!(f, "[{}]", rendered.join(", "))?;
+                    }
+                }
+                Ok(())
+            }
+            Value::Function(fun) => write!(f, "{}", fun.signature()),
+            Value::Module(m) => write!(f, "<module {}>", m.name),
+            Value::Model(_) => write!(f, "<model>"),
+            Value::Unit(u) => write!(f, "{}{}", u.value, u.dim),
         }
     }
 }
@@ -148,7 +250,7 @@ impl Truthiness for Value {
             Value::List(l) => !l.lock().unwrap().is_empty(),
             Value::Dict(d) => !d.lock().unwrap().is_empty(),
             Value::Tensor(t) => t.to_vec::<f64>().unwrap_or_default().iter().all(|x| *x != 0.0),
-            Value::Function(_) | Value::Module(_) => true,
+            Value::Function(_) | Value::Module(_) | Value::Model(_) | Value::Unit(_) => true,
         }
     }
 }
@@ -166,6 +268,16 @@ impl Value {
             Value::Tensor(_) => "tensor",
             Value::Function(_) => "function",
             Value::Module(_) => "module",
+            Value::Model(_) => "model",
+            Value::Unit(_) => "unit",
+        }
+    }
+
+    /// Tensor view.
+    pub fn as_tensor(&self) -> Option<&Tensor> {
+        match self {
+            Value::Tensor(t) => Some(t),
+            _ => None,
         }
     }
 
