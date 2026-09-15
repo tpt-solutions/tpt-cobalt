@@ -10,5 +10,8 @@ categories = ["compilers", "hardware-support"]
 
 [dependencies]
 tpt-catalyst = { workspace = true }
+tpt-telos-uir-bridge = { workspace = true, features = ["uir"] }
+tpt-uir-core = { workspace = true }
+tpt-ml = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = { workspace = true }

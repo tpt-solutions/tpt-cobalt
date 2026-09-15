@@ -26,6 +26,9 @@ pub mod pool;
 pub mod stream;
 pub mod wgpu_backend;
 
+#[cfg(feature = "cuda")]
+pub mod cuda_backend;
+
 pub use allocator::{AllocError, Handle, MemoryPool};
 pub use dispatch::{Device, dispatch_add, dispatch_matmul};
 pub use pool::{BufferId, BufferPool, PoolStats};

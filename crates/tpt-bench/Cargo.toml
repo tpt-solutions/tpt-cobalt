@@ -1,0 +1,32 @@
+[package]
+name = "tpt-bench"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "TPT Cobalt benchmark suite: criterion micro-benchmarks plus a Markdown/JSON report generator with a PyTorch comparison protocol"
+readme = "README.md"
+keywords = ["benchmark", "criterion", "performance"]
+categories = ["development-tools::profiling"]
+
+[dependencies]
+tpt-tensor = { workspace = true }
+tpt-autograd = { workspace = true }
+tpt-ml = { workspace = true }
+tpt-lang = { workspace = true }
+serde = { version = "1", features = ["derive"] }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+criterion = { workspace = true }
+
+[[bench]]
+name = "matmul"
+harness = false
+
+[[bench]]
+name = "ml"
+harness = false
+
+[[bin]]
+name = "tpt-bench-report"
+path = "src/bin/report.rs"

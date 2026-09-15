@@ -28,6 +28,9 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 use tpt_catalyst::ir::TptIr;
 
+pub mod proof;
+pub use proof::{alloc_region, allocs_from_module, build_manifest_proved, AllocTensor, Dim, MemoryProof};
+
 // ------------------------------- device model ------------------------------
 
 /// FPGA vendor family (drives the toolchain manifest; see [`FusionError`]).
@@ -55,6 +58,9 @@ pub struct DeviceConfig {
     pub vendor: Vendor,
     /// On-chip memory available for kernel local buffers, in bytes.
     pub buffer_budget_bytes: usize,
+    /// Global memory (DDR) the *model* must provably fit — consumed by
+    /// [`proof::build_manifest_proved`]'s UIR memory-bound proof.
+    pub global_mem_bytes: usize,
     pub clock_mhz: f64,
 }
 
@@ -63,12 +69,14 @@ impl DeviceConfig {
         name: impl Into<String>,
         vendor: Vendor,
         buffer_budget_bytes: usize,
+        global_mem_bytes: usize,
         clock_mhz: f64,
     ) -> Self {
         DeviceConfig {
             name: name.into(),
             vendor,
             buffer_budget_bytes,
+            global_mem_bytes,
             clock_mhz,
         }
     }
@@ -290,6 +298,10 @@ pub enum FusionError {
     MissingShape { node: String, attr: String },
     /// A kernel does not fit the device's on-chip buffer budget.
     DoesNotFit { kernel: String, report: FitReport },
+    /// The UIR global-memory proof found an overflowing assignment.
+    ProofFailed { detail: String },
+    /// The UIR global-memory proof could not be decided.
+    ProofInconclusive(String),
     UnsupportedVendor(Vendor),
     Serialization(String),
     Io(String),
@@ -313,6 +325,12 @@ impl fmt::Display for FusionError {
             ),
             FusionError::UnsupportedVendor(v) => {
                 write!(f, "no toolchain command template for vendor '{v}' yet")
+            }
+            FusionError::ProofFailed { detail } => {
+                write!(f, "memory-bound proof failed: {detail}")
+            }
+            FusionError::ProofInconclusive(r) => {
+                write!(f, "memory-bound proof inconclusive: {r}")
             }
             FusionError::Serialization(e) => write!(f, "serialization error: {e}"),
             FusionError::Io(e) => write!(f, "io error: {e}"),
@@ -430,7 +448,7 @@ mod tests {
     use tpt_catalyst::ir::{ComputationalGraph, Edge, ModelMetadata, OpNode};
 
     fn device() -> DeviceConfig {
-        DeviceConfig::new("test.platform", Vendor::Xilinx, 1 << 20, 300.0)
+        DeviceConfig::new("test.platform", Vendor::Xilinx, 1 << 20, 16 << 20, 300.0)
     }
 
     fn gemm_ir() -> TptIr {
@@ -500,7 +518,7 @@ mod tests {
 
     #[test]
     fn memory_fit_rejects_over_budget() {
-        let tiny = DeviceConfig::new("tiny", Vendor::Xilinx, 1_000, 200.0);
+        let tiny = DeviceConfig::new("tiny", Vendor::Xilinx, 1_000, 16 << 20, 200.0);
         let spec = GemmSpec {
             name: "big".into(),
             m: 512,
@@ -649,7 +667,7 @@ mod tests {
 
     #[test]
     fn intel_vendor_is_honest_about_missing_templates() {
-        let dev = DeviceConfig::new("intel.platform", Vendor::Intel, 1 << 20, 300.0);
+        let dev = DeviceConfig::new("intel.platform", Vendor::Intel, 1 << 20, 16 << 20, 300.0);
         let err = build_manifest(
             &gemm_ir(),
             &dev,

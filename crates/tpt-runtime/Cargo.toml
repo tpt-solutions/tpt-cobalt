@@ -14,3 +14,11 @@ tpt-autograd = { workspace = true }
 thiserror = { workspace = true }
 wgpu = { workspace = true }
 pollster = { workspace = true }
+cust = { workspace = true, optional = true }
+
+[features]
+default = []
+# CUDA backend (Driver API via `cust`). Optional so the default workspace
+# build stays green on machines without a CUDA toolkit on the link path;
+# the PTX artifact is embedded, so *running* only needs the driver.
+cuda = ["dep:cust"]

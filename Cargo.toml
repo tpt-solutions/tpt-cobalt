@@ -206,6 +206,7 @@ categories = ["compilers", "development-tools", "command-line-utilities"]
 
 [workspace.dependencies]
 tpt-tensor = { path = "crates/tpt-tensor" }
+tpt-lang = { path = "crates/tpt-lang" }
 tpt-autograd = { path = "crates/tpt-autograd" }
 tpt-ml = { path = "crates/tpt-ml" }
 tpt-hub = { path = "crates/tpt-hub" }
@@ -363,6 +364,7 @@ wide = "0.7"
 criterion = "0.5"
 wgpu = "0.20"
 pollster = "0.3"
+cust = "0.3"
 tpt-omni = { path = "forked/tpt-rust6/crates/tpt-omni" }
 tpt-io = { path = "forked/tpt-rust6/crates/tpt-io" }
 tpt-sym = { path = "crates/tpt-sym" }
@@ -378,6 +380,8 @@ tpt-sci-reaction-network = { version = "0.1.0", path = "forked/tpt-science/crate
 tpt-phys-dem = { version = "0.1.0", path = "forked/tpt-physics/crates/tpt-phys-dem" }
 tpt-catalyst = { version = "0.1.0", path = "forked/tpt-crucible/crates/tpt-catalyst", default-features = false }
 tpt-alloy = { version = "0.1.0", path = "forked/tpt-crucible/crates/tpt-alloy" }
+tpt-telos-uir-bridge = { version = "0.2.0", path = "forked/tpt-telos/crates/tpt-telos-uir-bridge" }
+tpt-uir-core = { version = "0.1.0", path = "forked/tpt-uir/crates/tpt-uir-core" }
 tpt-sci-md = { version = "0.1.0", path = "crates/tpt-sci-md" }
 tpt-sci-dft-classical = { version = "0.1.0", path = "crates/tpt-sci-dft-classical" }
 tpt-sci-kinetics = { version = "0.1.0", path = "crates/tpt-sci-kinetics" }
