@@ -73,59 +73,54 @@ pub fn run_report(iters: usize) -> Vec<Measurement> {
     for (n, it) in [(64usize, iters * 10), (128, iters * 4), (256, iters)] {
         let a = rand_mat(n, n);
         let b = rand_mat(n, n);
-        out.push(measure(
-            &format!("matmul_{n}x{n}_f64"),
-            n * n,
-            it,
-            || {
-                let _ = a.matmul(&b);
-            },
-        ));
+        out.push(measure(&format!("matmul_{n}x{n}_f64"), n * n, it, || {
+            let _ = a.matmul(&b);
+        }));
     }
 
     // linear forward + backward through the tape
     let x = rand_mat(128, 256);
     let w = rand_mat(256, 128).with_autograd();
-    out.push(measure("linear_128x256x128_fwd_bwd", 128 * 256, iters, || {
-        let w = w.clone();
-        let x = x.clone().with_autograd();
-        let y = tpt_autograd::matmul(&x, &w);
-        let _ = tpt_autograd::backward(&y);
-    }));
+    out.push(measure(
+        "linear_128x256x128_fwd_bwd",
+        128 * 256,
+        iters,
+        || {
+            let w = w.clone();
+            let x = x.clone().with_autograd();
+            let y = tpt_autograd::matmul(&x, &w);
+            tpt_autograd::backward(&y);
+        },
+    ));
 
     // transformer block forward (tpt-ml)
-    let mut block = tpt_ml::attention::TransformerBlock::new(64, 4, 128);
+    let block = tpt_ml::attention::TransformerBlock::new(64, 4, 128);
     // [B, T, D] per the block's contract
     let input = rand_mat(2 * 8, 64).reshape(&[2, 8, 64]).unwrap();
-    out.push(measure("transformer_block_b8_t8_d64_fwd", 2 * 8 * 64, iters, || {
-        let _ = block.forward(&input);
-    }));
+    out.push(measure(
+        "transformer_block_b8_t8_d64_fwd",
+        2 * 8 * 64,
+        iters,
+        || {
+            let _ = block.forward(&input);
+        },
+    ));
 
     // full TPT-Script train_step (the interpreter path, incl. AdamW)
     let mut interp = tpt_lang::Interpreter::new();
     interp
-        .run(
-            "let net = mlp(8, 32, 4)\nlet xs = ones([16, 8])\nlet ys = ones([16, 4])\n",
-        )
+        .run("let net = mlp(8, 32, 4)\nlet xs = ones([16, 8])\nlet ys = ones([16, 4])\n")
         .unwrap();
-    out.push(measure(
-        "tpt_script_train_step_b16",
-        16 * 8,
-        iters,
-        || {
-            let _ = interp
-                .run("train_step(net, xs, ys, 0.01)");
-        },
-    ));
+    out.push(measure("tpt_script_train_step_b16", 16 * 8, iters, || {
+        let _ = interp.run("train_step(net, xs, ys, 0.01)");
+    }));
 
     out
 }
 
 /// Render the measurements as a Markdown table.
 pub fn report_markdown(ms: &[Measurement]) -> String {
-    let mut md = String::from(
-        "| kernel | elements | iters | mean (µs) |\n|---|---|---|---|\n",
-    );
+    let mut md = String::from("| kernel | elements | iters | mean (µs) |\n|---|---|---|---|\n");
     for m in ms {
         let _ = writeln!(
             md,

@@ -80,28 +80,32 @@ pub fn huber(pred: &Tensor, target: &Tensor, delta: f64) -> Tensor {
         })
         .collect();
     let mut scalar = mean(&Tensor::from_typed(loss_v).reshape(diff.shape()).unwrap());
-    if diff.requires_grad() {
-        if let Some(dnode) = diff.node() {
-            let shape = diff.shape().to_vec();
-            let dv2 = dv.clone();
-            let parent = dnode.clone();
-            let node = AutogradNode::new(vec![dnode], Box::new(move |g: &Tensor| {
+    if diff.requires_grad()
+        && let Some(dnode) = diff.node()
+    {
+        let shape = diff.shape().to_vec();
+        let dv2 = dv.clone();
+        let parent = dnode.clone();
+        let node = AutogradNode::new(
+            vec![dnode],
+            Box::new(move |g: &Tensor| {
                 let g0 = g.to_vec::<f64>().unwrap()[0];
                 let hg: Vec<f64> = dv2
                     .iter()
                     .map(|&x| {
                         let a = x.abs();
-                        if a <= delta {
-                            x
-                        } else {
-                            delta * x.signum()
-                        }
+                        if a <= delta { x } else { delta * x.signum() }
                     })
                     .collect();
-                parent.accumulate_grad(&Tensor::from_typed(hg).reshape(&shape).unwrap().scale(g0 / n));
-            }));
-            scalar.set_node(Arc::new(node));
-        }
+                parent.accumulate_grad(
+                    &Tensor::from_typed(hg)
+                        .reshape(&shape)
+                        .unwrap()
+                        .scale(g0 / n),
+                );
+            }),
+        );
+        scalar.set_node(Arc::new(node));
     }
     scalar
 }
@@ -121,7 +125,10 @@ mod tests {
         assert!((loss.to_vec::<f64>().unwrap()[0] - 10.0).abs() < 1e-9);
         backward(&loss);
         // d/ dpred = 2*(pred-target)/N = pred
-        assert_eq!(pred.grad().unwrap().to_vec::<f64>().unwrap(), vec![2.0, 4.0]);
+        assert_eq!(
+            pred.grad().unwrap().to_vec::<f64>().unwrap(),
+            vec![2.0, 4.0]
+        );
     }
 
     #[test]

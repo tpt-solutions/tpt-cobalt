@@ -143,7 +143,9 @@ fn record(
 fn record_deferred(
     mut result: Tensor,
     parents: Vec<Arc<AutogradNode>>,
-    make_backward: impl FnOnce(Arc<std::sync::Mutex<Option<Tensor>>>) -> Box<dyn Fn(&Tensor) + Send + Sync>,
+    make_backward: impl FnOnce(
+        Arc<std::sync::Mutex<Option<Tensor>>>,
+    ) -> Box<dyn Fn(&Tensor) + Send + Sync>,
 ) -> Tensor {
     let cell = Arc::new(std::sync::Mutex::new(None));
     let backward = make_backward(cell.clone());
@@ -195,9 +197,9 @@ fn broadcast_flat_indices(target: &[usize], source: &[usize]) -> Vec<usize> {
     let mut idx = vec![0usize; trank];
     for _ in 0..total {
         let mut s = 0usize;
-        for d in 0..trank {
+        for (d, &i) in idx.iter().enumerate() {
             let sd = d + srank - trank;
-            let coord = if source[sd] == 1 { 0 } else { idx[d] };
+            let coord = if source[sd] == 1 { 0 } else { i };
             s += coord * strides[sd];
         }
         out.push(s);
@@ -236,15 +238,20 @@ pub fn custom_vjp(
 /// gradient into its parents. Leaf gradients are then readable via
 /// [`Tensor::grad`].
 pub fn backward(output: &Tensor) {
-    backward_seeded(output, &Tensor::ones(output.shape(), output.device()));
+    // seed with the output's own dtype so f32 GPU tapes work with plain
+    // `backward()` (a f64 seed into an f32 graph is a dtype mismatch)
+    backward_seeded(
+        output,
+        &Tensor::ones_typed(output.shape(), output.device(), output.dtype()),
+    );
 }
 
 /// Reverse-mode backward from a (possibly non-scalar) output with an explicit
 /// gradient seed `seed` (i.e. differentiates `sum(output * seed)`).
 pub fn backward_seeded(output: &Tensor, seed: &Tensor) {
-    let node = output
-        .node()
-        .expect("backward_seeded: output tensor has no autograd node (call .with_autograd() on parameters)");
+    let node = output.node().expect(
+        "backward_seeded: output tensor has no autograd node (call .with_autograd() on parameters)",
+    );
     node.set_grad(seed.clone());
     for n in topo(&node) {
         if let Some(g) = n.grad() {
@@ -667,9 +674,15 @@ mod tests {
         // second pass over dy/da: read off d²y/da² (in a) and d²y/dadb (in b)
         backward_seeded(&ga, &Tensor::ones(ga.shape(), ga.device()));
         let d2aa = a.grad().unwrap().to_vec::<f64>().unwrap()[0];
-        assert!((d2aa - 6.0).abs() < 1e-12, "d²y/da² expected 2b=6, got {d2aa}");
+        assert!(
+            (d2aa - 6.0).abs() < 1e-12,
+            "d²y/da² expected 2b=6, got {d2aa}"
+        );
         let d2ab = b.grad().unwrap().to_vec::<f64>().unwrap()[0];
-        assert!((d2ab - 4.0).abs() < 1e-12, "d²y/dadb expected 2a=4, got {d2ab}");
+        assert!(
+            (d2ab - 4.0).abs() < 1e-12,
+            "d²y/dadb expected 2a=4, got {d2ab}"
+        );
     }
 
     #[test]
@@ -683,7 +696,10 @@ mod tests {
         zero_grad(&y);
         backward_seeded(&g, &Tensor::ones(g.shape(), g.device()));
         let gg = x.grad().unwrap().to_vec::<f64>().unwrap()[0];
-        assert!((gg + 0.25).abs() < 1e-12, "f''(ln) expected -0.25, got {gg}");
+        assert!(
+            (gg + 0.25).abs() < 1e-12,
+            "f''(ln) expected -0.25, got {gg}"
+        );
 
         // sigmoid: s''(x) = s(1-s)(1-2s); x=0.7
         let z = Tensor::from_typed(vec![0.7_f64]).with_autograd();
@@ -697,7 +713,10 @@ mod tests {
         backward_seeded(&gs, &Tensor::ones(gs.shape(), gs.device()));
         let expect2 = sv * (1.0 - sv) * (1.0 - 2.0 * sv);
         let got = z.grad().unwrap().to_vec::<f64>().unwrap()[0];
-        assert!((got - expect2).abs() < 1e-12, "σ'' expected {expect2}, got {got}");
+        assert!(
+            (got - expect2).abs() < 1e-12,
+            "σ'' expected {expect2}, got {got}"
+        );
     }
 
     #[test]

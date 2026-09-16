@@ -22,11 +22,13 @@ pub mod ode;
 pub mod pinn;
 pub mod reactions;
 pub mod snn;
+pub mod sysid;
 
 pub use dem::DemSystem;
-pub use hertz::HertzChain;
-pub use reactions::DifferentiableNetwork;
-pub use snn::LifLayer;
 pub use fea::solve_linear;
+pub use hertz::HertzChain;
 pub use ode::{euler_step, rk4_step, solve_ivp};
 pub use pinn::train_pinn_ode;
+pub use reactions::DifferentiableNetwork;
+pub use snn::LifLayer;
+pub use sysid::fit_exponential_decay;

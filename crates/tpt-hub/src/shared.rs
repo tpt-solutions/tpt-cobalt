@@ -225,10 +225,8 @@ impl SharedTensorWriter {
     /// The file is sized exactly once here; subsequent [`Self::update`] calls
     /// reuse the mapping in place.
     pub fn create(path: &Path, tensor: &Tensor) -> Result<Self, SharedError> {
-        if let Some(parent) = path.parent() {
-            if !parent.as_os_str().is_empty() {
-                std::fs::create_dir_all(parent)?;
-            }
+        if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
+            std::fs::create_dir_all(parent)?;
         }
         let bytes = tensor.as_bytes();
         let file = OpenOptions::new()
@@ -378,14 +376,12 @@ mod tests {
         // zero-copy proof #1: the view's storage maps the SAME mapping Arc as
         // this handle's storage (downcast both to MmapStorage, compare inner
         // Arc<Mmap> pointers).
-        let same_map = |a: &dyn tpt_tensor::Storage, b: &dyn tpt_tensor::Storage| {
-            match (
-                a.as_any().downcast_ref::<MmapStorage>(),
-                b.as_any().downcast_ref::<MmapStorage>(),
-            ) {
-                (Some(m1), Some(m2)) => std::sync::Arc::ptr_eq(&m1.mmap, &m2.mmap),
-                _ => false,
-            }
+        let same_map = |a: &dyn tpt_tensor::Storage, b: &dyn tpt_tensor::Storage| match (
+            a.as_any().downcast_ref::<MmapStorage>(),
+            b.as_any().downcast_ref::<MmapStorage>(),
+        ) {
+            (Some(m1), Some(m2)) => std::sync::Arc::ptr_eq(&m1.mmap, &m2.mmap),
+            _ => false,
         };
         assert!(same_map(
             view.storage().as_ref(),
@@ -446,4 +442,3 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
-

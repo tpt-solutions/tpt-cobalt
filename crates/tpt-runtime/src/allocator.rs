@@ -64,7 +64,7 @@ impl Slab {
 
 /// Classic buddy allocator over a power-of-two arena (tier 2).
 struct Buddy {
-    free: Vec<Vec<usize>>, // free[order] = list of base offsets
+    free: Vec<Vec<usize>>,       // free[order] = list of base offsets
     used: HashMap<usize, usize>, // base -> order
 }
 
@@ -102,7 +102,7 @@ impl Buddy {
         let mut b = base;
         loop {
             let buddy = b ^ (1usize << o);
-            if o < max_order && !self.used.contains_key(&buddy) && self.free[o].iter().any(|&x| x == buddy) {
+            if o < max_order && !self.used.contains_key(&buddy) && self.free[o].contains(&buddy) {
                 self.free[o].retain(|&x| x != buddy);
                 b &= !(1usize << o);
                 o += 1;
@@ -205,7 +205,8 @@ mod tests {
         assert!(matches!(mid, Handle::Buddy(_)));
         assert!(matches!(big, Handle::Fallback(_)));
 
-        pool.get_mut(small).copy_from_slice(&[1, 2, 3, 4, 5, 6, 7, 8]);
+        pool.get_mut(small)
+            .copy_from_slice(&[1, 2, 3, 4, 5, 6, 7, 8]);
         assert_eq!(&pool.get(small)[..4], &[1, 2, 3, 4]);
         pool.free(small);
         pool.free(mid);

@@ -25,7 +25,10 @@ impl Environment {
     /// Create a child scope whose lookups fall through to `self`.
     #[must_use]
     pub fn child(parent: &Arc<Environment>) -> Environment {
-        Environment { values: Mutex::new(HashMap::new()), parent: Some(Arc::clone(parent)) }
+        Environment {
+            values: Mutex::new(HashMap::new()),
+            parent: Some(Arc::clone(parent)),
+        }
     }
 
     /// Define (or overwrite) a variable in *this* scope only.
@@ -34,6 +37,7 @@ impl Environment {
     }
 
     /// Assign to an existing binding found in this scope or any ancestor.
+    #[allow(clippy::result_unit_err)] // the only error is "not found"
     /// Returns `Err(())` when no binding with that name exists anywhere on the
     /// scope chain (assignment never creates bindings).
     pub fn assign(&self, name: &str, value: Value) -> Result<(), ()> {

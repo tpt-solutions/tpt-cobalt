@@ -1,8 +1,8 @@
 use std::sync::{Arc, Mutex};
 
-use crate::dtype::{DType, DTypeError, Num};
 use crate::device::Device;
-use crate::meta::{contiguous_strides, Layout, TensorMeta};
+use crate::dtype::{DType, DTypeError, Num};
+use crate::meta::{Layout, TensorMeta, contiguous_strides};
 use crate::storage::{CpuStorage, Storage};
 
 /// Reverse-mode autograd node (spec §5.1 / §5.2).
@@ -11,9 +11,12 @@ use crate::storage::{CpuStorage, Storage};
 /// in with the actual tape: the node records its parent nodes, a `backward`
 /// closure that scatters this node's gradient into its parents, and the
 /// accumulated gradient itself.
+/// The VJP closure recorded per node: receives the upstream gradient.
+pub type BackwardFn = Box<dyn Fn(&Tensor) + Send + Sync>;
+
 pub struct AutogradNode {
     pub parents: Vec<Arc<AutogradNode>>,
-    pub backward: Option<Box<dyn Fn(&Tensor) + Send + Sync>>,
+    pub backward: Option<BackwardFn>,
     grad: Mutex<Option<Tensor>>,
 }
 
@@ -90,11 +93,7 @@ fn add_grad_tensors(a: &Tensor, b: &Tensor) -> Tensor {
     if a_node.is_none() && b_node.is_none() {
         return result;
     }
-    let parents: Vec<Arc<AutogradNode>> = a_node
-        .iter()
-        .chain(b_node.iter())
-        .cloned()
-        .collect();
+    let parents: Vec<Arc<AutogradNode>> = a_node.iter().chain(b_node.iter()).cloned().collect();
     let closure_parents = parents.clone();
     let mut node_result = result;
     node_result.set_node(Arc::new(AutogradNode::new(
@@ -167,7 +166,10 @@ impl Tensor {
 
     /// Allocate a zeroed tensor of `shape` on `device` (CPU only for now).
     pub fn zeros(shape: &[usize], dtype: DType, device: Device) -> Self {
-        assert!(device.is_cpu(), "only CPU storage is implemented; got {device}");
+        assert!(
+            device.is_cpu(),
+            "only CPU storage is implemented; got {device}"
+        );
         let numel: usize = shape.iter().product();
         let storage = CpuStorage::zeros(numel, dtype);
         let strides = contiguous_strides(shape);
@@ -187,9 +189,26 @@ impl Tensor {
 
     /// Allocate a ones tensor (f64) of `shape` on `device`, used as a gradient seed.
     pub fn ones(shape: &[usize], device: Device) -> Self {
-        assert!(device.is_cpu(), "only CPU storage is implemented; got {device}");
+        Self::ones_typed(shape, device, DType::F64)
+    }
+
+    /// Allocate a ones tensor of an explicit dtype — gradient seeds must
+    /// match the dtype of the tensors they flow into (f32 GPU tapes etc.).
+    pub fn ones_typed(shape: &[usize], device: Device, dtype: DType) -> Self {
+        assert!(
+            device.is_cpu(),
+            "only CPU storage is implemented; got {device}"
+        );
         let numel: usize = shape.iter().product();
-        Self::from_typed(vec![1.0f64; numel]).reshape(shape).unwrap()
+        match dtype {
+            DType::F64 => Self::from_typed(vec![1.0f64; numel])
+                .reshape(shape)
+                .unwrap(),
+            DType::F32 => Self::from_typed(vec![1.0f32; numel])
+                .reshape(shape)
+                .unwrap(),
+            other => panic!("ones_typed: unsupported dtype {other:?}"),
+        }
     }
 
     /// Build a CPU tensor directly from little-endian raw bytes (e.g. a
@@ -292,12 +311,7 @@ impl Tensor {
         }
         let mut idx = vec![0usize; ndim];
         loop {
-            let off: usize = idx
-                .iter()
-                .zip(strides)
-                .map(|(i, s)| i * s)
-                .sum::<usize>()
-                * w;
+            let off: usize = idx.iter().zip(strides).map(|(i, s)| i * s).sum::<usize>() * w;
             offsets.push(off);
             let mut d = ndim;
             loop {
@@ -345,7 +359,11 @@ impl Tensor {
     /// `values` must match `numel()` and the dtype must be `f64`. Bumps the
     /// mutation version and detaches the autograd tape.
     pub fn set_values(&mut self, values: Vec<f64>) {
-        assert_eq!(values.len(), self.numel(), "set_values: length must equal numel");
+        assert_eq!(
+            values.len(),
+            self.numel(),
+            "set_values: length must equal numel"
+        );
         assert_eq!(self.dtype(), DType::F64, "set_values: only f64 supported");
         self.storage = Arc::new(CpuStorage::from_typed(values));
         self.meta = self.meta.clone().bumped_version();
@@ -368,7 +386,9 @@ impl Tensor {
     /// Multiply every element by a scalar.
     pub fn scale(&self, s: f64) -> Tensor {
         let a = self.to_vec::<f64>().unwrap();
-        Tensor::from_typed(a.iter().map(|x| x * s)).reshape(self.shape()).unwrap()
+        Tensor::from_typed(a.iter().map(|x| x * s))
+            .reshape(self.shape())
+            .unwrap()
     }
 
     /// Sum this tensor's elements into `shape`, reducing over broadcast axes.
@@ -396,25 +416,33 @@ impl Tensor {
     /// Element-wise negation.
     pub fn neg(&self) -> Tensor {
         let a = self.to_vec::<f64>().unwrap();
-        Tensor::from_typed(a.iter().map(|x| -x)).reshape(self.shape()).unwrap()
+        Tensor::from_typed(a.iter().map(|x| -x))
+            .reshape(self.shape())
+            .unwrap()
     }
 
     /// Element-wise natural log.
     pub fn log(&self) -> Tensor {
         let a = self.to_vec::<f64>().unwrap();
-        Tensor::from_typed(a.iter().map(|x| x.ln())).reshape(self.shape()).unwrap()
+        Tensor::from_typed(a.iter().map(|x| x.ln()))
+            .reshape(self.shape())
+            .unwrap()
     }
 
     /// Element-wise exponential.
     pub fn exp(&self) -> Tensor {
         let a = self.to_vec::<f64>().unwrap();
-        Tensor::from_typed(a.iter().map(|x| x.exp())).reshape(self.shape()).unwrap()
+        Tensor::from_typed(a.iter().map(|x| x.exp()))
+            .reshape(self.shape())
+            .unwrap()
     }
 
     /// Element-wise absolute value.
     pub fn abs(&self) -> Tensor {
         let a = self.to_vec::<f64>().unwrap();
-        Tensor::from_typed(a.iter().map(|x| x.abs())).reshape(self.shape()).unwrap()
+        Tensor::from_typed(a.iter().map(|x| x.abs()))
+            .reshape(self.shape())
+            .unwrap()
     }
 
     /// Sigmoid, element-wise.
@@ -425,9 +453,10 @@ impl Tensor {
             .unwrap()
     }
 
-    /// Ones tensor with this tensor's shape and device.
+    /// Ones tensor with this tensor's shape **and dtype** (seeds must match
+    /// the dtype of the graph they flow into).
     pub fn ones_like(&self) -> Tensor {
-        Tensor::ones(self.shape(), self.device())
+        Tensor::ones_typed(self.shape(), self.device(), self.dtype())
     }
 
     /// Sum of all elements as a scalar (shape `[1]`).
@@ -576,9 +605,20 @@ fn broadcast_shapes(a: &[usize], b: &[usize]) -> Vec<usize> {
     let n = a.len().max(b.len());
     let mut out = vec![1usize; n];
     for k in 0..n {
-        let da = if k < n - a.len() { 1 } else { a[k - (n - a.len())] };
-        let db = if k < n - b.len() { 1 } else { b[k - (n - b.len())] };
-        assert!(da == db || da == 1 || db == 1, "incompatible broadcast: {a:?} vs {b:?}");
+        let da = if k < n - a.len() {
+            1
+        } else {
+            a[k - (n - a.len())]
+        };
+        let db = if k < n - b.len() {
+            1
+        } else {
+            b[k - (n - b.len())]
+        };
+        assert!(
+            da == db || da == 1 || db == 1,
+            "incompatible broadcast: {a:?} vs {b:?}"
+        );
         out[k] = da.max(db);
     }
     out
@@ -676,8 +716,12 @@ mod tests {
 
     #[test]
     fn matmul_works() {
-        let a = Tensor::from_typed(vec![1.0_f64, 2.0, 3.0, 4.0]).reshape(&[2, 2]).unwrap();
-        let b = Tensor::from_typed(vec![0.0_f64, 1.0, 1.0, 0.0]).reshape(&[2, 2]).unwrap();
+        let a = Tensor::from_typed(vec![1.0_f64, 2.0, 3.0, 4.0])
+            .reshape(&[2, 2])
+            .unwrap();
+        let b = Tensor::from_typed(vec![0.0_f64, 1.0, 1.0, 0.0])
+            .reshape(&[2, 2])
+            .unwrap();
         let c = a.matmul(&b);
         assert_eq!(c.shape(), &[2, 2]);
         assert_eq!(c.to_vec::<f64>().unwrap(), vec![2.0, 1.0, 4.0, 3.0]);
@@ -724,7 +768,10 @@ mod tests {
         assert_eq!(c.to_vec::<f64>().unwrap(), p.to_vec::<f64>().unwrap());
         // reshape of the contiguous copy is now safe and correct
         let r = c.reshape(&[4, 2]).unwrap();
-        assert_eq!(r.to_vec::<f64>().unwrap(), vec![1.0, 3.0, 2.0, 4.0, 5.0, 7.0, 6.0, 8.0]);
+        assert_eq!(
+            r.to_vec::<f64>().unwrap(),
+            vec![1.0, 3.0, 2.0, 4.0, 5.0, 7.0, 6.0, 8.0]
+        );
     }
 
     #[test]

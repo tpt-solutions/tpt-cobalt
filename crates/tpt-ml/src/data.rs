@@ -157,7 +157,11 @@ mod tests {
         let mut ys = Vec::new();
         for i in 0..n {
             xs.push(Tensor::from_typed(vec![i as f64]).reshape(&[1]).unwrap());
-            ys.push(Tensor::from_typed(vec![(i * 2) as f64]).reshape(&[1]).unwrap());
+            ys.push(
+                Tensor::from_typed(vec![(i * 2) as f64])
+                    .reshape(&[1])
+                    .unwrap(),
+            );
         }
         TensorDataset::new(xs, ys)
     }
@@ -172,10 +176,7 @@ mod tests {
         assert_eq!(batches[0].0.shape(), &[2, 1]);
         assert_eq!(batches[2].0.shape(), &[1, 1]);
         // no shuffle -> first batch is samples 0,1
-        assert_eq!(
-            batches[0].0.to_vec::<f64>().unwrap(),
-            vec![0.0, 1.0]
-        );
+        assert_eq!(batches[0].0.to_vec::<f64>().unwrap(), vec![0.0, 1.0]);
     }
 
     #[test]
@@ -197,8 +198,12 @@ mod tests {
     #[test]
     fn stack_preserves_values() {
         let ts = vec![
-            Tensor::from_typed(vec![1.0_f64, 2.0]).reshape(&[2]).unwrap(),
-            Tensor::from_typed(vec![3.0_f64, 4.0]).reshape(&[2]).unwrap(),
+            Tensor::from_typed(vec![1.0_f64, 2.0])
+                .reshape(&[2])
+                .unwrap(),
+            Tensor::from_typed(vec![3.0_f64, 4.0])
+                .reshape(&[2])
+                .unwrap(),
         ];
         let s = stack(&ts);
         assert_eq!(s.shape(), &[2, 2]);

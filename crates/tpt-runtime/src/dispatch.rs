@@ -19,13 +19,19 @@ impl Device {
 
 /// Dispatch an element-wise add on `device` (host path).
 pub fn dispatch_add(a: &Tensor, b: &Tensor, device: Device) -> Tensor {
-    assert!(device.is_cpu(), "only CPU dispatch is implemented; got {device:?}");
+    assert!(
+        device.is_cpu(),
+        "only CPU dispatch is implemented; got {device:?}"
+    );
     a.add(b)
 }
 
 /// Dispatch a 2-D matrix multiply on `device` (host path).
 pub fn dispatch_matmul(a: &Tensor, b: &Tensor, device: Device) -> Tensor {
-    assert!(device.is_cpu(), "only CPU dispatch is implemented; got {device:?}");
+    assert!(
+        device.is_cpu(),
+        "only CPU dispatch is implemented; got {device:?}"
+    );
     a.matmul(b)
 }
 

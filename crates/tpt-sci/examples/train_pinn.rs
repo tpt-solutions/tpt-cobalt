@@ -3,8 +3,8 @@
 //!
 //! Run with: `cargo run -p tpt-sci --example train_pinn`
 
-use tpt_sci::pinn::{pinn_mlp, train_pinn_ode};
 use tpt_ml::{AdamW, Module};
+use tpt_sci::pinn::{pinn_mlp, train_pinn_ode};
 use tpt_tensor::Tensor;
 
 fn main() {

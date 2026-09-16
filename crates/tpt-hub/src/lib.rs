@@ -15,9 +15,11 @@ pub mod serialize;
 pub mod shared;
 
 pub use arrow_ipc::{load_arrow_ipc, save_arrow_ipc};
-pub use gguf::{save_gguf, GgufFile, GgufTensorInfo, GgufValue};
+pub use gguf::{GgufFile, GgufTensorInfo, GgufValue, save_gguf};
+pub use ipc::{
+    available as ipc_available, load as ipc_load, publish as ipc_publish, wait_for as ipc_wait_for,
+};
 pub use onnx::OnnxModel;
-pub use ipc::{available as ipc_available, load as ipc_load, publish as ipc_publish, wait_for as ipc_wait_for};
 pub use safetensors::{HubError, load_safetensors, save_safetensors};
 pub use serialize::{
     TPTB_MAGIC, load_tptb, save_tptb, tensor_from_json_debug, tensor_to_json_debug,

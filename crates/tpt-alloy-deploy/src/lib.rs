@@ -25,19 +25,16 @@ pub mod esp;
 pub mod ota;
 pub mod uf2;
 
-pub use esp::{slip_decode, slip_encode, EspError, EspFlasher, Transport};
+pub use esp::{EspError, EspFlasher, Transport, slip_decode, slip_encode};
 pub use ota::{NodeArtifact, Rollout, RolloutStatus, UpdateManifest};
-pub use uf2::{to_uf2, UF2_FAMILY_RP2040};
+pub use uf2::{UF2_FAMILY_RP2040, to_uf2};
 
 /// SHA-256 hex digest of an artifact (manifest integrity).
 pub fn sha256_hex(data: &[u8]) -> String {
     use sha2::{Digest, Sha256};
     let mut h = Sha256::new();
     h.update(data);
-    h.finalize()
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect()
+    h.finalize().iter().map(|b| format!("{b:02x}")).collect()
 }
 
 #[cfg(test)]

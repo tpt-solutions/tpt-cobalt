@@ -4,6 +4,8 @@
 
 use std::fmt;
 
+use std::sync::{Arc, Mutex};
+
 use tpt_tensor::Tensor;
 
 use crate::value::Value;
@@ -16,7 +18,11 @@ pub enum LangError {
     /// Division (or modulo) by zero.
     DivByZero,
     /// Unsupported operand combination for an arithmetic op.
-    Unsupported { op: &'static str, lhs: String, rhs: String },
+    Unsupported {
+        op: &'static str,
+        lhs: String,
+        rhs: String,
+    },
 }
 
 impl fmt::Display for LangError {
@@ -83,7 +89,17 @@ macro_rules! arith {
     };
 }
 
-arith!(value_add, "+", add);
+/// Addition with Python-style list concatenation, then the numeric rules.
+pub fn value_add(lhs: &Value, rhs: &Value) -> Result<Value, LangError> {
+    if let (Value::List(a), Value::List(b)) = (lhs, rhs) {
+        let mut out = a.lock().unwrap().clone();
+        out.extend(b.lock().unwrap().iter().cloned());
+        return Ok(Value::List(Arc::new(Mutex::new(out))));
+    }
+    value_add_numeric(lhs, rhs)
+}
+
+arith!(value_add_numeric, "+", add);
 arith!(value_sub, "-", sub);
 arith!(value_mul, "*", mul);
 
@@ -135,7 +151,8 @@ pub fn values_equal(a: &Value, b: &Value) -> bool {
         (Value::Dict(x), Value::Dict(y)) => {
             let (x, y) = (x.lock().unwrap(), y.lock().unwrap());
             x.len() == y.len()
-                && x.iter().all(|(k, v)| y.get(k).is_some_and(|w| values_equal(v, w)))
+                && x.iter()
+                    .all(|(k, v)| y.get(k).is_some_and(|w| values_equal(v, w)))
         }
         (Value::Tensor(x), Value::Tensor(y)) => {
             x.shape() == y.shape() && x.to_vec::<f64>().unwrap() == y.to_vec::<f64>().unwrap()

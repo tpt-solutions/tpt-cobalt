@@ -31,7 +31,9 @@ pub fn or(a: &BooleanArray, b: &BooleanArray) -> Result<BooleanArray, ColumnarEr
 
 /// Element-wise `!a`.
 pub fn not(a: &BooleanArray) -> Result<BooleanArray, ColumnarError> {
-    Ok(BooleanArray::from_iter_values(a.values().iter().map(|x| !x)))
+    Ok(BooleanArray::from_iter_values(
+        a.values().iter().map(|x| !x),
+    ))
 }
 
 fn bad_column_type() -> ColumnarError {
@@ -77,7 +79,8 @@ pub fn filter(arr: &dyn Array, mask: &BooleanArray) -> Result<ArrayRef, Columnar
             let kept: Vec<String> = a
                 .iter()
                 .zip(mask.values())
-                .filter_map(|(v, &m)| m.then(|| v.to_string()))
+                .filter(|&(_, &m)| m)
+                .map(|(v, _)| v.to_string())
                 .collect();
             std::sync::Arc::new(StringArray::new(kept))
         }
@@ -89,7 +92,8 @@ pub fn filter(arr: &dyn Array, mask: &BooleanArray) -> Result<ArrayRef, Columnar
             let kept: Vec<Vec<u8>> = a
                 .iter()
                 .zip(mask.values())
-                .filter_map(|(v, &m)| m.then(|| v.to_vec()))
+                .filter(|&(_, &m)| m)
+                .map(|(v, _)| v.to_vec())
                 .collect();
             std::sync::Arc::new(BinaryArray::new(kept))
         }

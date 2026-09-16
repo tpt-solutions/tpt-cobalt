@@ -141,11 +141,12 @@ impl Rollout {
 
     /// Mark the current node staged successfully.
     pub fn mark_staged(&mut self) {
-        if let Some(a) = self.manifest.artifacts.get(self.next) {
-            if self.failed.is_none() && !self.committed {
-                self.staged_ok.push(a.node_id);
-                self.next += 1;
-            }
+        if let Some(a) = self.manifest.artifacts.get(self.next)
+            && self.failed.is_none()
+            && !self.committed
+        {
+            self.staged_ok.push(a.node_id);
+            self.next += 1;
         }
     }
 
@@ -218,10 +219,22 @@ mod tests {
     #[test]
     fn manifest_rejects_duplicates_digest_mismatch_and_foreign_release() {
         let mut m = UpdateManifest::new("release-7");
-        m.push(NodeArtifact::new(0, FirmwareTarget::Esp32, "release-7", b"x".to_vec()))
-            .unwrap();
-        assert!(m.push(NodeArtifact::new(0, FirmwareTarget::Rp2040, "release-7", b"y".to_vec()))
-            .is_err());
+        m.push(NodeArtifact::new(
+            0,
+            FirmwareTarget::Esp32,
+            "release-7",
+            b"x".to_vec(),
+        ))
+        .unwrap();
+        assert!(
+            m.push(NodeArtifact::new(
+                0,
+                FirmwareTarget::Rp2040,
+                "release-7",
+                b"y".to_vec()
+            ))
+            .is_err()
+        );
 
         let mut bad = manifest();
         bad.artifacts[0].image = b"tampered".to_vec();

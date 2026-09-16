@@ -376,7 +376,9 @@ mod tests {
         sel[idx * 2 * n + idx] = 1.0;
         let s = Tensor::from_typed(sel).reshape(&[n, 2 * n]).unwrap();
         let pos = tpt_autograd::matmul(&s, y1);
-        let seed = Tensor::from_typed(vec![1.0_f64; n]).reshape(&[n, 1]).unwrap();
+        let seed = Tensor::from_typed(vec![1.0_f64; n])
+            .reshape(&[n, 1])
+            .unwrap();
         tpt_autograd::backward_seeded(&pos, &seed);
     }
 

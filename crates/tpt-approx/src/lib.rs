@@ -73,10 +73,16 @@ macro_rules! assert_relative_eq {
 #[macro_export]
 macro_rules! assert_abs_diff_eq {
     ($a:expr, $b:expr) => {
-        assert!(crate::abs_diff_eq!($a, $b), "values are not approximately equal");
+        assert!(
+            $crate::abs_diff_eq!($a, $b),
+            "values are not approximately equal"
+        );
     };
     ($a:expr, $b:expr, epsilon = $eps:expr) => {
-        assert!((($a as f64) - ($b as f64)).abs() <= ($eps as f64), "values are not approximately equal");
+        assert!(
+            (($a as f64) - ($b as f64)).abs() <= ($eps as f64),
+            "values are not approximately equal"
+        );
     };
 }
 

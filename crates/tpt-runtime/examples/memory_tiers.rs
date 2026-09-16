@@ -13,11 +13,17 @@ fn main() {
     let tiny = mem.alloc(32).unwrap();
     mem.get_mut(tiny)[0] = 42;
     assert_eq!(mem.get(tiny)[0], 42);
-    println!("slab tier: 32-byte alloc, first byte = {}", mem.get(tiny)[0]);
+    println!(
+        "slab tier: 32-byte alloc, first byte = {}",
+        mem.get(tiny)[0]
+    );
 
     let medium = mem.alloc(1024).unwrap();
     mem.get_mut(medium).fill(7);
-    println!("buddy tier: 1 KiB alloc, filled with {}", mem.get(medium)[0]);
+    println!(
+        "buddy tier: 1 KiB alloc, filled with {}",
+        mem.get(medium)[0]
+    );
 
     let large = mem.alloc(1 << 20).unwrap();
     println!("fallback tier: 1 MiB alloc, len = {}", mem.get(large).len());
@@ -40,6 +46,9 @@ fn main() {
     println!("released id {a:?}, next alloc got id {b:?} (recycled)");
 
     let stats = pool.stats();
-    println!("pool stats: {:?} (reuse hits = {})", stats, stats.reuse_hits);
+    println!(
+        "pool stats: {:?} (reuse hits = {})",
+        stats, stats.reuse_hits
+    );
     assert!(stats.reuse_hits >= 1, "released buffer should be recycled");
 }

@@ -13,7 +13,6 @@
 
 use std::io::{Read, Write};
 
-use crate::codec::decode_array;
 use crate::datatypes::SchemaRef;
 use crate::error::ColumnarError;
 use crate::record_batch::RecordBatch;

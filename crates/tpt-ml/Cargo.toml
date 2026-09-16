@@ -5,7 +5,7 @@ edition.workspace = true
 description = "Standard ML API over tpt-tensor/tpt-autograd: modules, layers, conv, attention, losses, optimizers, schedulers, and data loading"
 readme = "README.md"
 keywords = ["machine-learning", "deep-learning", "neural-network", "transformer", "optimizer"]
-categories = ["science", "mathematics"]
+categories = ["science", "algorithms"]
 
 license.workspace = true
 

@@ -50,6 +50,9 @@ fn main() {
     dual.run();
 
     assert!(*early.lock().unwrap(), "compute should overlap the copy");
-    assert!(*synced.lock().unwrap(), "barrier should order compute after copy");
+    assert!(
+        *synced.lock().unwrap(),
+        "barrier should order compute after copy"
+    );
     println!("overlap + event barrier both verified");
 }

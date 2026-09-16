@@ -98,7 +98,10 @@ impl CudaContext {
     }
 
     fn f32_vec(t: &Tensor, what: &str) -> Vec<f32> {
-        assert!(t.dtype() == DType::F32, "{what} must be f32 for the cuda backend");
+        assert!(
+            t.dtype() == DType::F32,
+            "{what} must be f32 for the cuda backend"
+        );
         t.to_vec::<f32>().unwrap()
     }
 
@@ -228,8 +231,12 @@ mod tests {
     fn matmul_matches_reference() {
         let ctx = ctx();
         // 2×2 exact
-        let a = f32_tensor(vec![1.0, 2.0, 3.0, 4.0]).reshape(&[2, 2]).unwrap();
-        let b = f32_tensor(vec![5.0, 6.0, 7.0, 8.0]).reshape(&[2, 2]).unwrap();
+        let a = f32_tensor(vec![1.0, 2.0, 3.0, 4.0])
+            .reshape(&[2, 2])
+            .unwrap();
+        let b = f32_tensor(vec![5.0, 6.0, 7.0, 8.0])
+            .reshape(&[2, 2])
+            .unwrap();
         let c = ctx.matmul(&a, &b).unwrap();
         assert_eq!(c.to_vec::<f32>().unwrap(), vec![19.0, 22.0, 43.0, 50.0]);
         // 3×5 @ 5×2 vs a manual reference
@@ -263,18 +270,10 @@ mod tests {
         let a = f32_tensor(vec![1.0, 2.0]).with_autograd();
         let b = f32_tensor(vec![10.0, 20.0]).with_autograd();
         let out = ctx.tape_add(&a, &b).unwrap();
-        // seed f32 (Tensor::ones is f64 — same pattern as the WGPU test)
-        let seed = f32_tensor(vec![1.0, 1.0]);
-        tpt_autograd::backward_seeded(&out, &seed);
+        // plain backward(): the seed is now dtype-aware (f32 here)
+        tpt_autograd::backward(&out);
         // add is linear: both leaves receive the upstream gradient (ones)
-        assert_eq!(
-            a.grad().unwrap().to_vec::<f32>().unwrap(),
-            vec![1.0, 1.0]
-        );
-        assert_eq!(
-            b.grad().unwrap().to_vec::<f32>().unwrap(),
-            vec![1.0, 1.0]
-        );
+        assert_eq!(a.grad().unwrap().to_vec::<f32>().unwrap(), vec![1.0, 1.0]);
+        assert_eq!(b.grad().unwrap().to_vec::<f32>().unwrap(), vec![1.0, 1.0]);
     }
 }
-

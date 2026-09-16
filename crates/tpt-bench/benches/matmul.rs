@@ -1,5 +1,5 @@
 //! Criterion micro-benchmarks for the matmul family (f64, CPU path).
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use tpt_tensor::Tensor;
 
 fn rand_mat(rows: usize, cols: usize) -> Tensor {

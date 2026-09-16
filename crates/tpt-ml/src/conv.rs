@@ -29,14 +29,29 @@ pub struct Conv1d {
 
 impl Conv1d {
     /// `weight` is `[c_out, c_in, k]`.
-    pub fn new(c_in: usize, c_out: usize, k: usize, stride: usize, padding: usize, bias: bool) -> Self {
+    pub fn new(
+        c_in: usize,
+        c_out: usize,
+        k: usize,
+        stride: usize,
+        padding: usize,
+        bias: bool,
+    ) -> Self {
         let w = Tensor::from_typed(vec![0.0_f64; c_out * c_in * k]).with_autograd();
         let b = if bias {
             Some(Tensor::from_typed(vec![0.0_f64; c_out]).with_autograd())
         } else {
             None
         };
-        Conv1d { weight: w, bias: b, stride, padding, c_in, c_out, k }
+        Conv1d {
+            weight: w,
+            bias: b,
+            stride,
+            padding,
+            c_in,
+            c_out,
+            k,
+        }
     }
 
     pub fn kernel_size(&self) -> usize {
@@ -129,15 +144,17 @@ impl Conv1d {
     ) -> Tensor {
         if !(input.requires_grad()
             || self.weight.requires_grad()
-            || self.bias.as_ref().map_or(false, |b| b.requires_grad()))
+            || self.bias.as_ref().is_some_and(|b| b.requires_grad()))
         {
             return result;
         }
         let in_node = input.node();
         let w_node = self.weight.node();
         let b_node = self.bias.as_ref().and_then(|b| b.node());
-        let parents: Vec<Arc<AutogradNode>> =
-            [in_node.clone(), w_node.clone(), b_node.clone()].into_iter().flatten().collect();
+        let parents: Vec<Arc<AutogradNode>> = [in_node.clone(), w_node.clone(), b_node.clone()]
+            .into_iter()
+            .flatten()
+            .collect();
 
         let (c_in2, c_out2, k2, stride2, pad2, l2, l_out2, n2) =
             (c_in, c_out, k, stride, pad, l, l_out, n);
@@ -178,7 +195,9 @@ impl Conv1d {
                 }
                 if let Some(node) = &w_node {
                     node.accumulate_grad(
-                        &Tensor::from_typed(gwt).reshape(&[c_out2, c_in2, k2]).unwrap(),
+                        &Tensor::from_typed(gwt)
+                            .reshape(&[c_out2, c_in2, k2])
+                            .unwrap(),
                     );
                 }
                 if let Some(node) = &b_node {
@@ -205,7 +224,15 @@ pub struct Conv2d {
 
 impl Conv2d {
     /// `weight` is `[c_out, c_in, k_h, k_w]`.
-    pub fn new(c_in: usize, c_out: usize, k_h: usize, k_w: usize, stride: usize, padding: usize, bias: bool) -> Self {
+    pub fn new(
+        c_in: usize,
+        c_out: usize,
+        k_h: usize,
+        k_w: usize,
+        stride: usize,
+        padding: usize,
+        bias: bool,
+    ) -> Self {
         let w = Tensor::from_typed(vec![0.0_f64; c_out * c_in * k_h * k_w]).with_autograd();
         let b = if bias {
             Some(Tensor::from_typed(vec![0.0_f64; c_out]).with_autograd())
@@ -286,12 +313,17 @@ impl Module for Conv2d {
         let out_shape = vec![n, c_out, h_out, w_out];
         let mut result = Tensor::from_typed(out).reshape(&out_shape).unwrap();
 
-        if input.requires_grad() || self.weight.requires_grad() || self.bias.as_ref().map_or(false, |b| b.requires_grad()) {
+        if input.requires_grad()
+            || self.weight.requires_grad()
+            || self.bias.as_ref().is_some_and(|b| b.requires_grad())
+        {
             let in_node = input.node();
             let w_node = self.weight.node();
             let b_node = self.bias.as_ref().and_then(|b| b.node());
-            let parents: Vec<Arc<AutogradNode>> =
-                [in_node.clone(), w_node.clone(), b_node.clone()].into_iter().flatten().collect();
+            let parents: Vec<Arc<AutogradNode>> = [in_node.clone(), w_node.clone(), b_node.clone()]
+                .into_iter()
+                .flatten()
+                .collect();
 
             let v2 = v.clone();
             let wt2 = wt.clone();
@@ -300,7 +332,7 @@ impl Module for Conv2d {
             let (k_h2, k_w2, stride2, pad2) = (k_h, k_w, stride, pad);
             let (h2, w2, h_out2, w_out2) = (h, w, h_out, w_out);
             let n2 = n;
-            let out_shape2 = out_shape.clone();
+            let _out_shape2 = out_shape.clone();
             let in_shape2 = shape.clone();
             let node = AutogradNode::new(
                 parents,
@@ -334,7 +366,8 @@ impl Module for Conv2d {
                                                     continue;
                                                 }
                                                 let in_idx = ((nn * c_in2 + c) * h2 + ih) * w2 + iw;
-                                                let w_idx = ((o * c_in2 + c) * k_h2 + kh) * k_w2 + kw;
+                                                let w_idx =
+                                                    ((o * c_in2 + c) * k_h2 + kh) * k_w2 + kw;
                                                 gin[in_idx] += gi * wt2[w_idx];
                                                 gwt[w_idx] += gi * v2[in_idx];
                                             }
@@ -349,7 +382,11 @@ impl Module for Conv2d {
                         node.accumulate_grad(&Tensor::from_typed(gin).reshape(&in_shape2).unwrap());
                     }
                     if let Some(node) = &w_node {
-                        node.accumulate_grad(&Tensor::from_typed(gwt).reshape(&[c_out2, c_in2, k_h2, k_w2]).unwrap());
+                        node.accumulate_grad(
+                            &Tensor::from_typed(gwt)
+                                .reshape(&[c_out2, c_in2, k_h2, k_w2])
+                                .unwrap(),
+                        );
                     }
                     if let Some(node) = &b_node {
                         node.accumulate_grad(&Tensor::from_typed(gbs).reshape(&[c_out2]).unwrap());
@@ -410,8 +447,7 @@ impl Conv3d {
         padding: usize,
         bias: bool,
     ) -> Self {
-        let w =
-            Tensor::from_typed(vec![0.0_f64; c_out * c_in * k_d * k_h * k_w]).with_autograd();
+        let w = Tensor::from_typed(vec![0.0_f64; c_out * c_in * k_d * k_h * k_w]).with_autograd();
         let b = if bias {
             Some(Tensor::from_typed(vec![0.0_f64; c_out]).with_autograd())
         } else {
@@ -479,10 +515,8 @@ impl Module for Conv3d {
                                             let iw = iw - pad;
                                             let in_idx =
                                                 (((nn * c_in + c) * d + id) * h + ih) * w + iw;
-                                            let w_idx = (((o * c_in + c) * k_d + kd) * k_h
-                                                + kh)
-                                                * k_w
-                                                + kw;
+                                            let w_idx =
+                                                (((o * c_in + c) * k_d + kd) * k_h + kh) * k_w + kw;
                                             acc += v[in_idx] * wt[w_idx];
                                         }
                                     }
@@ -504,7 +538,7 @@ impl Module for Conv3d {
 
         if !(input.requires_grad()
             || self.weight.requires_grad()
-            || self.bias.as_ref().map_or(false, |b| b.requires_grad()))
+            || self.bias.as_ref().is_some_and(|b| b.requires_grad()))
         {
             return result;
         }
@@ -512,14 +546,15 @@ impl Module for Conv3d {
         let in_node = input.node();
         let w_node = self.weight.node();
         let b_node = self.bias.as_ref().and_then(|b| b.node());
-        let parents: Vec<Arc<AutogradNode>> =
-            [in_node.clone(), w_node.clone(), b_node.clone()].into_iter().flatten().collect();
+        let parents: Vec<Arc<AutogradNode>> = [in_node.clone(), w_node.clone(), b_node.clone()]
+            .into_iter()
+            .flatten()
+            .collect();
 
         let (v2, wt2) = (v, wt);
         let (c_in2, c_out2, k_d2, k_h2, k_w2, stride2, pad2) =
             (c_in, c_out, k_d, k_h, k_w, stride, pad);
-        let (d2, h2, w2, d_out2, h_out2, w_out2, n2) =
-            (d, h, w, d_out, h_out, w_out, n);
+        let (d2, h2, w2, d_out2, h_out2, w_out2, n2) = (d, h, w, d_out, h_out, w_out, n);
         let in_shape2 = shape;
         let node = AutogradNode::new(
             parents,
@@ -556,18 +591,14 @@ impl Module for Conv3d {
                                                         continue;
                                                     }
                                                     let iw = iw - pad2;
-                                                    let in_idx = (((nn * c_in2 + c) * d2
-                                                        + id)
-                                                        * h2
-                                                        + ih)
-                                                        * w2
-                                                        + iw;
-                                                    let w_idx = (((o * c_in2 + c) * k_d2
-                                                        + kd)
-                                                        * k_h2
-                                                        + kh)
-                                                        * k_w2
-                                                        + kw;
+                                                    let in_idx =
+                                                        (((nn * c_in2 + c) * d2 + id) * h2 + ih)
+                                                            * w2
+                                                            + iw;
+                                                    let w_idx =
+                                                        (((o * c_in2 + c) * k_d2 + kd) * k_h2 + kh)
+                                                            * k_w2
+                                                            + kw;
                                                     gin[in_idx] += gi * wt2[w_idx];
                                                     gwt[w_idx] += gi * v2[in_idx];
                                                 }
@@ -717,7 +748,9 @@ mod tests {
     fn conv3d_forward_shape_and_values() {
         // [1,1,2,2,2] input of ones, kernel all ones [1,1,2,2,2], no bias
         // -> single output = sum of 8 elements = 8
-        let x = Tensor::from_typed(vec![1.0_f64; 8]).reshape(&[1, 1, 2, 2, 2]).unwrap();
+        let x = Tensor::from_typed(vec![1.0_f64; 8])
+            .reshape(&[1, 1, 2, 2, 2])
+            .unwrap();
         let mut conv = Conv3d::new(1, 1, 2, 2, 2, 1, 0, false);
         conv.weight = Tensor::from_typed(vec![1.0_f64; 8]).with_autograd();
         let y = conv.forward(&x);

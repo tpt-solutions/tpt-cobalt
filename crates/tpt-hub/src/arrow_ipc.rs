@@ -62,10 +62,11 @@ pub fn save_arrow_ipc(tensors: &[(&str, &Tensor)]) -> Result<Vec<u8>, HubError> 
     Ok(buf)
 }
 
-fn str_col<'a>(batch: &'a tpt_columnar::record_batch::RecordBatch, name: &str) -> Result<Vec<&'a str>, HubError> {
-    let col = batch
-        .column_by_name(name)
-        .ok_or(HubError::BadHeaderLen)?;
+fn str_col<'a>(
+    batch: &'a tpt_columnar::record_batch::RecordBatch,
+    name: &str,
+) -> Result<Vec<&'a str>, HubError> {
+    let col = batch.column_by_name(name).ok_or(HubError::BadHeaderLen)?;
     let a = col
         .as_any()
         .downcast_ref::<tpt_columnar::array::StringArray>()
@@ -83,9 +84,7 @@ pub fn load_arrow_ipc(bytes: &[u8]) -> Result<HashMap<String, Tensor>, HubError>
         let names = str_col(&batch, "name")?;
         let dtypes = str_col(&batch, "dtype")?;
         let shapes = str_col(&batch, "shape")?;
-        let data_col = batch
-            .column_by_name("data")
-            .ok_or(HubError::BadHeaderLen)?;
+        let data_col = batch.column_by_name("data").ok_or(HubError::BadHeaderLen)?;
         let data = data_col
             .as_any()
             .downcast_ref::<tpt_columnar::array::BinaryArray>()
@@ -102,9 +101,11 @@ pub fn load_arrow_ipc(bytes: &[u8]) -> Result<HashMap<String, Tensor>, HubError>
                 "bool" => DType::Bool,
                 other => return Err(HubError::UnknownDtype(other.to_string())),
             };
-            let shape: Vec<usize> = shapes[i].split(',').filter_map(|d| d.parse().ok()).collect();
-            let tensor =
-                Tensor::from_le_bytes(data.value(i).to_vec(), dtype, &shape);
+            let shape: Vec<usize> = shapes[i]
+                .split(',')
+                .filter_map(|d| d.parse().ok())
+                .collect();
+            let tensor = Tensor::from_le_bytes(data.value(i).to_vec(), dtype, &shape);
             out.insert(names[i].to_string(), tensor);
         }
     }
@@ -133,7 +134,9 @@ mod tests {
 
     #[test]
     fn arrow_ipc_roundtrip_mixed_dtypes() {
-        let f = Tensor::from_typed(vec![1.5_f32, -2.5]).reshape(&[2]).unwrap();
+        let f = Tensor::from_typed(vec![1.5_f32, -2.5])
+            .reshape(&[2])
+            .unwrap();
         let i = Tensor::from_typed(vec![-7_i32, 0, 42])
             .reshape(&[1, 3])
             .unwrap();

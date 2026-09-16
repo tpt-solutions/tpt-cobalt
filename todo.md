@@ -766,3 +766,185 @@ estore_state.
    UPDATE 2026-08-21: MHA, TransformerBlock, Conv1d, and the batched-matmul/slicing primitives
    are now DONE (see the checklist above); only the Phase-6-blocked TPT Script demo, Conv3d,
    and the ONNX/GGUF parsers remain.
+
+
+---
+
+## Platform review 2026-09-16 — tracked follow-ups
+
+Findings from the platform-wide review (bugs, gaps, adoption, automation).
+Ordered within each group by expected value; tick with STATUS notes as with
+the phases above.
+
+### Bugs / correctness
+
+- [ ] **tpt-autograd: batched-matmul double-backward produces incorrect
+      second derivatives** (found 2026-09-16 while building the Poisson
+      PINN). A scalar `[1,1]` matmul passes `double_backward_matmul`, but a
+      `[N,2]@[2,2]` + tanh chain gives tape 1.26 vs analytic 0.152 for
+      u_xx - the pass-2 flow through the batched matmul VJP composition is
+      incomplete/wrong. Blocks the true PDE PINNs (`laplacian_2d` +
+      `train_pinn_poisson` are implemented in `tpt-sci::pinn` with their
+      FD-verification and training tests `#[ignore]`-gated on this fix).
+      Additionally: a broadcast bias-add severs second-pass connectivity
+      entirely (pass 2 lands `None`), so `pinn_mlp` stayed biased to keep
+      the ODE PINN tests green - when fixing, make the broadcast-add VJP
+      compose for double-backward AND switch `pinn_mlp` to bias-free, then
+      un-ignore both tests.
+
+- [x] Dead workspace.dependencies entries point at nonexistent crates
+      STATUS 2026-09-16: FIXED - the 8 `tpt-sci-*` crates were already on
+      disk in `forked/tpt-science/crates/` (Phase 0 kept all 18; members
+      just weren't declared) - added to workspace members and the deps
+      repointed. `tpt-sym` + `tpt-ui-macro` found upstream in the local
+      `tpt-rust6` clone and forked into `forked/tpt-rust6/crates/`
+      (manifests concretized; recorded in UPSTREAM.md @ `3510ba4`). All ten
+      crates build and their 53 tests pass.
+- [x] `Tensor::ones(shape, device)` hardcodes f64 - seeding `backward()` on
+      an f32 tape fails with a dtype mismatch
+      STATUS 2026-09-16: FIXED - `Tensor::ones_typed(shape, device, dtype)`
+      added; `ones_like()` now matches shape AND dtype; `backward()` seeds
+      with the output's own dtype. The CUDA tape test runs plain
+      `backward()` on the f32 GPU tape as the regression test.
+- [x] `backward()` (ones-seeded) and `tape_add` on any non-f64 backend share
+      the same footgun - fix once in tpt-tensor/tpt-autograd
+      STATUS 2026-09-16: DONE (with the ones fix above; the WGPU test keeps
+      its deliberately scaled seed to verify seed magnitude flows).
+- [x] `Stmt::MemberAssign` parses only single-level `IDENT.IDENT =`
+      STATUS 2026-09-16: DONE - pure-lookahead parser accepts chains
+      (`a.b.c = v`), and Dict receivers are assignable (`d.key = v`) alongside
+      Modules. Member *access* falls through untouched (regression-tested).
+- [x] Tensor indexing is flat-only (`t[i]`)
+      STATUS 2026-09-16: DONE - `t[i, j]` row-major multi-index, `[a:b]` /
+      open slices on tensors (first axis) and lists, string indexing; list
+      `+` concatenation added (Python-style). 6 new tests; tpt-lang at 54.
+- [x] Audit tpt-hub parsers (GGUF/ONNX/SafeTensors/TPTB) for panics on
+      malformed/truncated input
+      STATUS 2026-09-16: DONE — audit found and fixed: SafeTensors indexed
+      the attacker-controlled `data_offsets` before validation (short arrays
+      are rejected by serde's `[usize; 2]` typing, now also guarded), and
+      header `shape` vs byte-length mismatches hit `reshape`/`from_le_bytes`
+      asserts — both loaders now validate numel x dtype-size against the
+      data range with checked arithmetic and return `OffsetOutOfRange`.
+      GGUF `numel`/offset arithmetic is overflow-checked; ONNX typed-array
+      initializers shorter than their declared dims return errors; ONNX f32
+      packing switched to `as_chunks` (removes an `unwrap`). 3 negative
+      tests (short offsets, shape/data mismatch, overflowing offsets).
+      Remaining (low): TPTB container + a full fuzz pass (tracked in the
+      Automation section).
+
+### Language usability (tpt-lang)
+
+- [ ] Source positions on the AST: thread line/col through lexer -> parser
+      into `Stmt`/`Expr`. Unblocks: file:line breakpoints (vs label
+      substrings), precise LSP diagnostic spans, line-numbered runtime
+      errors. Highest-leverage single change in the interactive stack.
+- [x] `for` loops (range/list/tensor iteration) and `elif`
+      STATUS 2026-09-16: DONE - `for x in <range|list|tensor|str|dict>` (dict
+      keys sorted for determinism; ranges via `a..b` literals), `elif`
+      chains desugaring to nested ifs. Regression-tested.
+- [x] Keyword arguments at call sites (`f(x = 1, y = 2)`) - DONE 2026-09-16:
+      binds by parameter name (mixing positionals + keywords + defaults),
+      rejects unknown/duplicate names with the parameter named.
+- [ ] String method set (`upper/lower/split/trim/contains`).
+      - [x] Interpolation in `print` - DONE 2026-09-16: full expression
+            interpolation with `{{`/`}}` escapes.
+- [ ] Structured error handling (`try { } catch e { }`) — currently
+      assert-only; matters for the safety-critical story and long-running
+      notebooks.
+- [ ] Cross-file scripts: an `import "file.tpt"` (or `include`) with a
+      module cache so examples can share libraries.
+- [x] REPL-adjacent CLI - DONE 2026-09-16 (see Adoption): the `tpt` binary
+      (`run` / `check` / `repl`) covers file execution and static checking.
+      - [ ] REPL: line editing, `:type expr`/`:shape expr` magics, `:load`,
+            `%%debug` entry.
+
+### Missing features / roadmap
+
+- [ ] 2-D PDE PINN (Poisson/Laplace) via the double-backward tape
+      STATUS 2026-09-16: IMPLEMENTED, blocked on an autograd bug - see the
+      batched-matmul double-backward item under Bugs/correctness (the
+      Laplacian machinery and both tests are in `tpt-sci::pinn`, gated on
+      the fix).
+- [x] System-identification demo - DONE 2026-09-16
+      (`tpt-sci::sysid::fit_exponential_decay` fits the decay parameter by
+      gradient descent through the tape-native RK4 solver; recovers the
+      parameter to <5e-2 and the loss gradient matches finite differences).
+      The recipe extends to any parameterized vector field.
+- [ ] Unit-tagged tensors: attach the checker's `Dim` to `TensorMeta` and
+      verify units through tensor ops at check time — extends the compile-
+      time-units killer feature from scalars to tensors (novel vs PyTorch/JAX).
+- [x] LSP hover/completions surfaced with checker knowledge
+      STATUS 2026-09-16: DONE - `tpt-lang::check::analyze_bindings` exposes
+      the per-variable unit/shape maps; hover appends `(shape [2, 3],
+      units m/s^2)` from the document prefix above the cursor. Tested.
+- [ ] WGPU matmul on the tape (Phase 4 remaining polish) and cuBLAS-backed
+      matmul behind the CUDA feature — the two backends then match the CPU
+      op coverage.
+- [ ] Mosaic placement scheduler over tpt-runtime Devices (capstone of the
+      Phase 5 scoping sequence: consumes Fusion manifests + Alloy topology,
+      emits per-device subgraphs wired through `tpt-hub::shared`).
+- [ ] Element/Silicon merged analog/CIM simulator (lowest-priority exotic
+      backend per the scoping doc).
+- [ ] `tpt-hub`: ONNX *export* (train in Cobalt, hand off to PyTorch
+      ecosystems) — the inbound parser is done; export is the adoption
+      bridge.
+- [ ] Multi-threaded, Arrow-backed DataLoader (deferred Phase 2 note) once
+      tpt-columnar batches are the dataset container.
+- [ ] Autograd second-order coverage for the remaining first-order VJPs
+      (relu/abs/softmax/bmm/sum_lastdim) — documented boundary today.
+- [ ] Gradient checkpointing for long ODE/DEM unrolls (tape memory grows
+      linearly with steps; recompute segments to bound it) — enables
+      minute-scale differentiable simulations.
+- [ ] `tpt-sci::hertz` extensions: Coulomb friction with a smoothed cap and
+      3-D rotation (both documented as excluded from the first slice).
+
+### Adoption
+
+- [ ] `tpt run script.tpt` — a single-file script runner binary next to the
+      REPL (the #1 adoption blocker today: there is no way to execute a
+      .tpt file without writing Rust).
+- [x] Templates directory - DONE 2026-09-16
+      (`examples/templates/{physics-units, ml-training, modules,
+      data-pipeline}.tpt` + README; all four verified running through
+      `tpt run`).
+- [x] Getting-started landing page - DONE 2026-09-16
+      (`docs/getting-started.md`: clone -> CLI build -> first unit-checked
+      script -> trained model -> pointers to tutorial/cookbook/templates).
+- [x] Cobalt architecture overview document - DONE 2026-09-16
+      (`docs/architecture.md`: crate diagram, the three invariants, the
+      forked-pillar map, and the train->serialize->IR->prove->deploy data
+      flow).
+- [ ] Prebuilt `tpt` CLI binaries on GitHub Releases (publishing-adjacent
+      but adoption-critical; coordinate with the publishing section below).
+- [ ] PyO3 interop bindings (adoption on-ramp from the publishing section):
+      load Cobalt-trained tensors/models from Python during transitions.
+
+### Automation / CI
+
+- [x] GitHub Actions CI - DONE 2026-09-16 (`.github/workflows/ci.yml`):
+      build+test matrix (ubuntu/windows), full-workspace test job, metadata
+      validator job, clippy as REPORT-ONLY (~50 historic lints tracked
+      below), and a manual `workflow_dispatch` CUDA job for GPU runners.
+      - [x] Clippy backlog cleared 2026-09-16 (auto-fix + hand fixes +
+            documented allows for the by-design `Arc<Mutex<Value>>`
+            divergence and the norm-reduction index math); the lint job is
+            now BLOCKING (`-D warnings`) and `cargo fmt --check` gates the
+            first-party crates (all 15 reformatted). Verified: 0 clippy
+            warnings, fmt clean across all 15.
+      - [ ] Doc-tested examples: execute the tutorial/cookbook script
+            snippets in a test harness so published docs cannot rot.
+- [ ] GPU job: run `cargo test -p tpt-runtime --features cuda` and the WGPU
+      tests on a hosted runner with graceful skip when no adapter (keeps the
+      live-GPU guarantees from rotting).
+- [ ] cargo-fuzz targets for the tpt-hub parsers and the tpt-lang
+      lexer/parser, smoke-run in CI (safety-critical credibility + the audit
+      task above).
+- [ ] `cargo xtask` automation: one command for test-all, doc build,
+      package validation, benchmark report, and proof/regression artifact
+      generation (feeds the CI jobs instead of shell soup).
+- [ ] Doc-tested examples: execute the tutorial/cookbook script snippets in
+      a test harness with expected outputs so published docs cannot rot.
+- [ ] Fusion proof artifacts for CI: emit `.proof.json` alongside manifests
+      and add a verify subcommand so downstream pipelines can re-check
+      memory bounds without the generator.

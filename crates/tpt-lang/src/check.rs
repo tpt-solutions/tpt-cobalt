@@ -130,6 +130,45 @@ impl fmt::Display for CheckError {
 }
 impl std::error::Error for CheckError {}
 
+/// A public static-analysis snapshot for one variable: its dimension tag
+/// (units) and inferred shape when knowable.
+#[derive(Debug, Clone, Default)]
+pub struct BindingInfo {
+    /// Display form of the dimension (`"m/s^2"`), `None` when unknown.
+    pub dim: Option<String>,
+    /// Inferred shape; `None` entries are unknown dims. `None` = no opinion.
+    pub shape: Option<Vec<Option<usize>>>,
+}
+
+/// Static per-variable knowledge for `src` — the same analysis
+/// [`check_program`] runs, exposed so tooling (LSP hover, REPL `:type`) can
+/// surface shapes and units. Gradual: absent names are simply unknown.
+pub fn analyze_bindings(src: &str) -> Result<BTreeMap<String, BindingInfo>, CheckError> {
+    let toks = crate::interp::lex(src).map_err(|e| CheckError {
+        kind: "SyntaxError".into(),
+        message: e.message,
+    })?;
+    let mut parser = crate::interp::Parser::new(&toks);
+    let prog = parser.parse_block().map_err(|e| CheckError {
+        kind: "SyntaxError".into(),
+        message: e.message,
+    })?;
+    let mut checker = Checker::default();
+    checker.check_block(&prog)?;
+    let mut out = BTreeMap::new();
+    for (name, dim) in &checker.dims {
+        out.entry(name.clone())
+            .or_insert_with(BindingInfo::default)
+            .dim = Some(dim.to_string());
+    }
+    for (name, shape) in &checker.shapes {
+        out.entry(name.clone())
+            .or_insert_with(BindingInfo::default)
+            .shape = Some(shape.clone());
+    }
+    Ok(out)
+}
+
 /// Statically check `src` (units + shapes) without executing it.
 ///
 /// This is the compile-time half of the spec's Four Killer Features line
@@ -163,27 +202,28 @@ impl Checker {
             match s {
                 Stmt::Let(name, e) => self.bind(name, e)?,
                 Stmt::Assign(name, e) => {
-                    if let Some(prev) = self.dims.get(name).cloned() {
-                        if let Some(d) = self.expr_dim(e)? {
-                            if prev != d && !prev.is_dimensionless() && !d.is_dimensionless() {
-                                return Err(CheckError {
-                                    kind: "UnitError".into(),
-                                    message: format!(
-                                        "'{name}' has unit '{prev}' but is assigned an expression of unit '{d}'"
-                                    ),
-                                });
-                            }
-                        }
+                    if let Some(prev) = self.dims.get(name).cloned()
+                        && let Some(d) = self.expr_dim(e)?
+                        && prev != d
+                        && !prev.is_dimensionless()
+                        && !d.is_dimensionless()
+                    {
+                        return Err(CheckError {
+                            kind: "UnitError".into(),
+                            message: format!(
+                                "'{name}' has unit '{prev}' but is assigned an expression of unit '{d}'"
+                            ),
+                        });
                     }
                     self.bind(name, e)?;
                 }
                 Stmt::Print(e) | Stmt::Assert(e) | Stmt::Expr(e) | Stmt::Return(Some(e)) => {
                     self.expr_dim(e)?;
                     // shape knowledge is best-effort: "Unknown" is not failure
-                    if let Err(err) = self.expr_shape(e) {
-                        if err.kind != "Unknown" {
-                            return Err(err);
-                        }
+                    if let Err(err) = self.expr_shape(e)
+                        && err.kind != "Unknown"
+                    {
+                        return Err(err);
                     }
                 }
                 Stmt::Return(None) => {}
@@ -198,6 +238,10 @@ impl Checker {
                     Checker::default().check_block(body)?;
                 }
                 Stmt::Module(_, body) => {
+                    Checker::default().check_block(body)?;
+                }
+                Stmt::For(_, iterable, body) => {
+                    self.expr_dim(iterable)?;
                     Checker::default().check_block(body)?;
                 }
                 Stmt::MemberAssign(base, _, e) => {
@@ -270,6 +314,11 @@ impl Checker {
                         }
                         _ => Ok(ld.or(rd)),
                     },
+                    ".." => {
+                        // range endpoints must be numbers; the range itself is
+                        // a dimensionless list
+                        Ok(Some(Dim::default()))
+                    }
                     "*" => Ok(match (&ld, &rd) {
                         (Some(a), Some(b)) => Some(Dim::compose(a, b, 1)),
                         _ => ld.or(rd),
@@ -279,13 +328,15 @@ impl Checker {
                         _ => ld.or(rd),
                     }),
                     "==" | "!=" | "<" | "<=" | ">" | ">=" => {
-                        if let (Some(a), Some(b)) = (&ld, &rd) {
-                            if a != b && !a.is_dimensionless() && !b.is_dimensionless() {
-                                return Err(CheckError {
-                                    kind: "UnitError".into(),
-                                    message: format!("comparing '{a}' with '{b}'"),
-                                });
-                            }
+                        if let (Some(a), Some(b)) = (&ld, &rd)
+                            && a != b
+                            && !a.is_dimensionless()
+                            && !b.is_dimensionless()
+                        {
+                            return Err(CheckError {
+                                kind: "UnitError".into(),
+                                message: format!("comparing '{a}' with '{b}'"),
+                            });
                         }
                         Ok(Some(Dim::default()))
                     }
@@ -297,19 +348,33 @@ impl Checker {
             }
             Expr::Call(fexpr, args) => {
                 for a in args {
-                    let _ = self.expr_shape(a);
-                    self.expr_dim(a)?;
+                    let _ = self.expr_shape(&a.expr);
+                    self.expr_dim(&a.expr)?;
                 }
-                if let (Expr::Ident(name), Some(first)) = (fexpr.as_ref(), args.first()) {
-                    if name == "sum" {
-                        return self.expr_dim(first);
-                    }
+                if let (Expr::Ident(name), Some(first)) = (fexpr.as_ref(), args.first())
+                    && name == "sum"
+                {
+                    return self.expr_dim(&first.expr);
                 }
                 Ok(None)
             }
-            Expr::Index(base, idx) => {
+            Expr::Index(base, idx_args) => {
                 let bd = self.expr_dim(base)?;
-                self.expr_dim(idx)?;
+                for arg in idx_args {
+                    match arg {
+                        crate::interp::IdxArg::Expr(e) => {
+                            self.expr_dim(e)?;
+                        }
+                        crate::interp::IdxArg::Range(a, b) => {
+                            if let Some(e) = a {
+                                self.expr_dim(e)?;
+                            }
+                            if let Some(e) = b {
+                                self.expr_dim(e)?;
+                            }
+                        }
+                    }
+                }
                 Ok(bd)
             }
             Expr::Member(base, _) => {
@@ -333,13 +398,13 @@ impl Checker {
             },
             Expr::Call(fexpr, args) => {
                 for a in args {
-                    let _ = self.expr_shape(a);
+                    let _ = self.expr_shape(&a.expr);
                 }
                 if let Expr::Ident(name) = fexpr.as_ref() {
                     if name == "ones" || name == "zeros" {
                         return Ok(args
                             .iter()
-                            .flat_map(|a| match a {
+                            .flat_map(|a| match &a.expr {
                                 Expr::Num(n) => vec![Some(*n as usize)],
                                 Expr::List(items) => items
                                     .iter()
@@ -355,29 +420,28 @@ impl Checker {
                     if name == "matmul" {
                         let sa = args
                             .first()
-                            .map(|a| self.expr_shape(a))
+                            .map(|a| self.expr_shape(&a.expr))
                             .transpose()
                             .ok()
                             .flatten();
                         let sb = args
                             .get(1)
-                            .map(|a| self.expr_shape(a))
+                            .map(|a| self.expr_shape(&a.expr))
                             .transpose()
                             .ok()
                             .flatten();
-                        if let (Some(sa), Some(sb)) = (&sa, &sb) {
-                            if sa.len() == 2 && sb.len() == 2 {
-                                match (sa[1], sb[0]) {
-                                    (Some(k1), Some(k2)) if k1 != k2 => {
-                                        return Err(CheckError {
-                                            kind: "ShapeError".into(),
-                                            message: format!(
-                                                "matmul inner dims differ: {k1} vs {k2}"
-                                            ),
-                                        });
-                                    }
-                                    _ => return Ok(vec![sa[0], sb[1]]),
+                        if let (Some(sa), Some(sb)) = (&sa, &sb)
+                            && sa.len() == 2
+                            && sb.len() == 2
+                        {
+                            match (sa[1], sb[0]) {
+                                (Some(k1), Some(k2)) if k1 != k2 => {
+                                    return Err(CheckError {
+                                        kind: "ShapeError".into(),
+                                        message: format!("matmul inner dims differ: {k1} vs {k2}"),
+                                    });
                                 }
+                                _ => return Ok(vec![sa[0], sb[1]]),
                             }
                         }
                     }
@@ -388,15 +452,11 @@ impl Checker {
                 })
             }
             Expr::Binary(op, l, r) => {
-                let sa = match self.expr_shape(l) { Ok(s) => s, Err(e) => return Err(e) };
-                let sb = match self.expr_shape(r) { Ok(s) => s, Err(e) => return Err(e) };
+                let sa = self.expr_shape(l)?;
+                let sb = self.expr_shape(r)?;
                 if sa == sb && op != "/" {
                     Ok(sa)
-                } else if op == "*"
-                    && sa.last() == sb.first()
-                    && sa.len() >= 2
-                    && sb.len() >= 2
-                {
+                } else if op == "*" && sa.last() == sb.first() && sa.len() >= 2 && sb.len() >= 2 {
                     let mut out = sa;
                     out.pop();
                     out.extend(sb.into_iter().skip(1));

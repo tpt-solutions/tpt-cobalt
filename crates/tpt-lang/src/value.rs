@@ -179,17 +179,17 @@ impl fmt::Display for Value {
                 let mut keys: Vec<&String> = map.keys().collect();
                 keys.sort();
                 let rendered: Vec<String> =
-                    keys.iter().map(|k| format!("{k}: {}", map[*k].to_string())).collect();
+                    keys.iter().map(|k| format!("{k}: {}", map[*k])).collect();
                 write!(f, "{{{}}}", rendered.join(", "))
             }
             Value::Tensor(t) => {
                 write!(f, "Tensor{:?} ", t.shape())?;
                 // pretty-print small tensors element-wise
-                if t.numel() <= 16 {
-                    if let Ok(v) = t.to_vec::<f64>() {
-                        let rendered: Vec<String> = v.iter().map(|x| format!("{x}")).collect();
-                        write!(f, "[{}]", rendered.join(", "))?;
-                    }
+                if t.numel() <= 16
+                    && let Ok(v) = t.to_vec::<f64>()
+                {
+                    let rendered: Vec<String> = v.iter().map(|x| format!("{x}")).collect();
+                    write!(f, "[{}]", rendered.join(", "))?;
                 }
                 Ok(())
             }
@@ -249,7 +249,11 @@ impl Truthiness for Value {
             Value::Str(s) => !s.is_empty(),
             Value::List(l) => !l.lock().unwrap().is_empty(),
             Value::Dict(d) => !d.lock().unwrap().is_empty(),
-            Value::Tensor(t) => t.to_vec::<f64>().unwrap_or_default().iter().all(|x| *x != 0.0),
+            Value::Tensor(t) => t
+                .to_vec::<f64>()
+                .unwrap_or_default()
+                .iter()
+                .all(|x| *x != 0.0),
             Value::Function(_) | Value::Module(_) | Value::Model(_) | Value::Unit(_) => true,
         }
     }

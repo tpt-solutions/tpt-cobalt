@@ -29,7 +29,9 @@ use serde::{Deserialize, Serialize};
 use tpt_catalyst::ir::TptIr;
 
 pub mod proof;
-pub use proof::{alloc_region, allocs_from_module, build_manifest_proved, AllocTensor, Dim, MemoryProof};
+pub use proof::{
+    AllocTensor, Dim, MemoryProof, alloc_region, allocs_from_module, build_manifest_proved,
+};
 
 // ------------------------------- device model ------------------------------
 
@@ -191,9 +193,7 @@ pub fn emit_hls_gemm(spec: &GemmSpec, tile: &TileConfig) -> String {
         "// shapes: M={} N={} K={}  tiles: MI={} NJ={} KI={}  db={}\n",
         spec.m, spec.n, spec.k, tile.m, tile.n, tile.k, tile.double_buffer
     ));
-    s.push_str(&format!(
-        "// budget check: caller must run check_memory_fit before emitting\n"
-    ));
+    s.push_str("// budget check: caller must run check_memory_fit before emitting\n");
     s.push_str("#include <hls_stream.h>\n");
     s.push_str("#include <ap_int.h>\n\n");
     s.push_str(&format!("#define M {}\n", spec.m));
@@ -274,8 +274,7 @@ pub struct ToolchainManifest {
 impl ToolchainManifest {
     /// Serialize to pretty JSON (for `manifest.json`).
     pub fn to_json(&self) -> Result<String, FusionError> {
-        serde_json::to_string_pretty(self)
-            .map_err(|e| FusionError::Serialization(e.to_string()))
+        serde_json::to_string_pretty(self).map_err(|e| FusionError::Serialization(e.to_string()))
     }
 
     /// Write `manifest.json` plus one `.cpp` per kernel into `dir`.
@@ -295,11 +294,19 @@ pub enum FusionError {
     /// IR nodes Fusion cannot lower (reported together, never skipped).
     UnsupportedOps(Vec<String>),
     /// A supported op is missing its shape attributes.
-    MissingShape { node: String, attr: String },
+    MissingShape {
+        node: String,
+        attr: String,
+    },
     /// A kernel does not fit the device's on-chip buffer budget.
-    DoesNotFit { kernel: String, report: FitReport },
+    DoesNotFit {
+        kernel: String,
+        report: FitReport,
+    },
     /// The UIR global-memory proof found an overflowing assignment.
-    ProofFailed { detail: String },
+    ProofFailed {
+        detail: String,
+    },
     /// The UIR global-memory proof could not be decided.
     ProofInconclusive(String),
     UnsupportedVendor(Vendor),
@@ -314,7 +321,10 @@ impl fmt::Display for FusionError {
                 write!(f, "unsupported ops for FPGA lowering: {}", ops.join(", "))
             }
             FusionError::MissingShape { node, attr } => {
-                write!(f, "node '{node}' is missing required shape attribute '{attr}'")
+                write!(
+                    f,
+                    "node '{node}' is missing required shape attribute '{attr}'"
+                )
             }
             FusionError::DoesNotFit { kernel, report } => write!(
                 f,
@@ -507,11 +517,17 @@ mod tests {
         );
         assert!(r.fits);
         // double buffering doubles only A and B
-        let db = TileConfig { double_buffer: true, ..tile };
+        let db = TileConfig {
+            double_buffer: true,
+            ..tile
+        };
         let r = check_memory_fit(&spec, &db, &device());
         assert_eq!(r.total_bytes, 2 * 8_192 + 4_096);
         // f16 accumulates in f32: C tile unchanged, A/B halve
-        let spec16 = GemmSpec { dtype: DType::F16, ..spec };
+        let spec16 = GemmSpec {
+            dtype: DType::F16,
+            ..spec
+        };
         let r16 = check_memory_fit(&spec16, &tile, &device());
         assert_eq!(r16.total_bytes, 2 * 2_048 + 4_096);
     }
@@ -585,8 +601,18 @@ mod tests {
             name: "act".into(),
             attributes: HashMap::new(),
         });
-        let err = build_manifest(&ir, &device(), TileConfig { m: 32, n: 32, k: 32, double_buffer: true }, DType::F32)
-            .unwrap_err();
+        let err = build_manifest(
+            &ir,
+            &device(),
+            TileConfig {
+                m: 32,
+                n: 32,
+                k: 32,
+                double_buffer: true,
+            },
+            DType::F32,
+        )
+        .unwrap_err();
         assert_eq!(err, FusionError::UnsupportedOps(vec!["relu".into()]));
 
         // pure-GEMM graph lowers end to end

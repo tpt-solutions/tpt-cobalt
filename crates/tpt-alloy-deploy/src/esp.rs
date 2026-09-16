@@ -42,14 +42,15 @@ pub fn slip_decode(buf: &[u8]) -> Result<(Vec<u8>, usize), EspError> {
         match buf[i] {
             0xC0 => return Ok((out, i + 1)),
             0xDB => {
-                let esc = buf.get(i + 1).copied().ok_or_else(|| {
-                    EspError::Framing("truncated escape sequence".into())
-                })?;
+                let esc = buf
+                    .get(i + 1)
+                    .copied()
+                    .ok_or_else(|| EspError::Framing("truncated escape sequence".into()))?;
                 match esc {
                     0xDC => out.push(0xC0),
                     0xDD => out.push(0xDB),
                     other => {
-                        return Err(EspError::Framing(format!("bad escape 0xDB 0x{other:02X}")))
+                        return Err(EspError::Framing(format!("bad escape 0xDB 0x{other:02X}")));
                     }
                 }
                 i += 2;
@@ -244,7 +245,7 @@ impl<'t> EspFlasher<'t> {
     /// ROM-sync handshake (8 sync attempts is the ROM-loader convention).
     pub fn sync(&mut self) -> Result<(), EspError> {
         let mut data = vec![0x07, 0x07, 0x12, 0x20];
-        data.extend(std::iter::repeat(0x55).take(32));
+        data.extend(std::iter::repeat_n(0x55, 32));
         for _ in 0..8 {
             let mut frame = vec![0x00u8];
             frame.extend_from_slice(&(Command::Sync as u16).to_le_bytes());
@@ -333,8 +334,14 @@ mod tests {
 
     #[test]
     fn slip_decode_rejects_truncated_and_bad_escapes() {
-        assert_eq!(slip_decode(&[]).unwrap_err(), EspError::Framing("expected leading 0xC0".into()));
-        assert_eq!(slip_decode(&[0xC0, 0x01, 0x02]).unwrap_err(), EspError::Incomplete);
+        assert_eq!(
+            slip_decode(&[]).unwrap_err(),
+            EspError::Framing("expected leading 0xC0".into())
+        );
+        assert_eq!(
+            slip_decode(&[0xC0, 0x01, 0x02]).unwrap_err(),
+            EspError::Incomplete
+        );
         assert!(matches!(
             slip_decode(&[0xC0, 0xDB, 0x99, 0xC0]).unwrap_err(),
             EspError::Framing(_)
@@ -362,12 +369,26 @@ mod tests {
     #[test]
     fn response_parsing_and_status() {
         // OK response for a Sync
-        let body: Vec<u8> = [vec![0x01], (0x08u16).to_le_bytes().to_vec(), (2u16).to_le_bytes().to_vec(), 0u32.to_le_bytes().to_vec(), vec![0x00, 0x00]].concat();
+        let body: Vec<u8> = [
+            vec![0x01],
+            (0x08u16).to_le_bytes().to_vec(),
+            (2u16).to_le_bytes().to_vec(),
+            0u32.to_le_bytes().to_vec(),
+            vec![0x00, 0x00],
+        ]
+        .concat();
         let p = Packet::parse_response(&body).unwrap();
         assert_eq!(p.command, Command::Sync);
         assert!(p.status().is_ok());
         // failure status
-        let bad: Vec<u8> = [vec![0x01], (0x03u16).to_le_bytes().to_vec(), (2u16).to_le_bytes().to_vec(), 0u32.to_le_bytes().to_vec(), vec![0x05, 0x05]].concat();
+        let bad: Vec<u8> = [
+            vec![0x01],
+            (0x03u16).to_le_bytes().to_vec(),
+            (2u16).to_le_bytes().to_vec(),
+            0u32.to_le_bytes().to_vec(),
+            vec![0x05, 0x05],
+        ]
+        .concat();
         let p = Packet::parse_response(&bad).unwrap();
         assert_eq!(p.status().unwrap_err(), EspError::DeviceStatus(0x05));
     }
@@ -411,8 +432,7 @@ mod tests {
             resp.extend_from_slice(&cmd.to_le_bytes());
             resp.extend_from_slice(&2u16.to_le_bytes());
             resp.extend_from_slice(&0u32.to_le_bytes());
-            let fail = cmd == Command::FlashData as u16
-                && self.fail_at_seq == Some(self.seq_seen);
+            let fail = cmd == Command::FlashData as u16 && self.fail_at_seq == Some(self.seq_seen);
             if cmd == Command::FlashData as u16 {
                 self.seq_seen += 1;
             }
@@ -472,7 +492,11 @@ mod tests {
         for (i, req) in reqs[1..4].iter().enumerate() {
             assert_eq!(req.0, Command::FlashData);
             let d = &req.1;
-            assert_eq!(u32::from_le_bytes(d[4..8].try_into().unwrap()), i as u32, "seq");
+            assert_eq!(
+                u32::from_le_bytes(d[4..8].try_into().unwrap()),
+                i as u32,
+                "seq"
+            );
             let chunk = &d[8..];
             let expected = &image[i * 0x800..((i + 1) * 0x800).min(image.len())];
             assert_eq!(chunk, expected);

@@ -1,0 +1,25 @@
+# Modules, closures, defaults, and keyword arguments.
+
+module geom {
+    let pi = 3.14159
+    def area(r) {
+        return pi * r * r
+    }
+    def ring(outer, inner = 0.0) {
+        return area(outer) - area(inner)
+    }
+}
+
+module stats {
+    def mean(xs, scale = 1.0) {
+        let s = 0
+        for x in xs {
+            s = s + x
+        }
+        return s * scale / len(xs)
+    }
+}
+
+print "disk  = {geom.area(2.0)}"
+print "ring  = {geom.ring(outer = 2.0, inner = 1.0)}"
+print "mean  = {stats.mean([1, 2, 3, 4, 5])}"

@@ -19,8 +19,8 @@
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use crate::serialize::{load_tptb, save_tptb};
 use crate::safetensors::HubError;
+use crate::serialize::{load_tptb, save_tptb};
 use tpt_tensor::Tensor;
 
 fn tptb_path(dir: &Path, name: &str) -> PathBuf {
@@ -83,7 +83,9 @@ mod tests {
     fn publish_load_roundtrip() {
         let dir = std::env::temp_dir().join("tpt_ipc_test_pub");
         let _ = std::fs::remove_dir_all(&dir);
-        let t = Tensor::from_typed(vec![1.5_f64, -2.5, 3.0]).reshape(&[3]).unwrap();
+        let t = Tensor::from_typed(vec![1.5_f64, -2.5, 3.0])
+            .reshape(&[3])
+            .unwrap();
         publish(&dir, "weights", &t).unwrap();
 
         assert_eq!(available(&dir), vec!["weights".to_string()]);
@@ -103,7 +105,10 @@ mod tests {
         publish(&dir, "slot", &v2).unwrap();
         // exactly one published tensor, holding the new value
         assert_eq!(available(&dir), vec!["slot".to_string()]);
-        assert_eq!(load(&dir, "slot").unwrap().to_vec::<f64>().unwrap(), vec![2.0]);
+        assert_eq!(
+            load(&dir, "slot").unwrap().to_vec::<f64>().unwrap(),
+            vec![2.0]
+        );
         // no leftover temp files
         let entries: Vec<String> = std::fs::read_dir(&dir)
             .unwrap()

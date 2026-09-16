@@ -20,7 +20,7 @@ impl TptLanguageServer {
         }
     }
 
-    fn publish_diagnostics(&self, uri: &Url, text: &str) {
+    async fn publish_diagnostics(&self, uri: &Url, text: &str) {
         let diags = analyze(text)
             .into_iter()
             .map(|d| Diagnostic {
@@ -39,7 +39,8 @@ impl TptLanguageServer {
             })
             .collect();
         self.client
-            .publish_diagnostics(uri.clone(), diags, None);
+            .publish_diagnostics(uri.clone(), diags, None)
+            .await;
     }
 
     fn text(&self) -> String {
@@ -78,41 +79,38 @@ impl LanguageServer for TptLanguageServer {
 
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
         *self.doc.lock().unwrap() = params.text_document.text.clone();
-        self.publish_diagnostics(&params.text_document.uri, &params.text_document.text);
+        self.publish_diagnostics(&params.text_document.uri, &params.text_document.text)
+            .await;
     }
 
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
         if let Some(last) = params.content_changes.last() {
             *self.doc.lock().unwrap() = last.text.clone();
-            self.publish_diagnostics(&params.text_document.uri, &last.text);
+            self.publish_diagnostics(&params.text_document.uri, &last.text)
+                .await;
         }
     }
 
     async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
         let text = self.text();
         let pos = params.text_document_position_params.position;
-        Ok(hover_at(
-            &text,
-            pos.line as usize,
-            pos.character as usize,
+        Ok(
+            hover_at(&text, pos.line as usize, pos.character as usize).map(|h| Hover {
+                contents: HoverContents::Markup(MarkupContent {
+                    kind: MarkupKind::PlainText,
+                    value: h.contents,
+                }),
+                range: Some(Range {
+                    start: Position::new(h.line as u32, h.col_start as u32),
+                    end: Position::new(h.line as u32, h.col_end as u32),
+                }),
+            }),
         )
-        .map(|h| Hover {
-            contents: HoverContents::Markup(MarkupContent {
-                kind: MarkupKind::PlainText,
-                value: h.contents,
-            }),
-            range: Some(Range {
-                start: Position::new(h.line as u32, h.col_start as u32),
-                end: Position::new(h.line as u32, h.col_end as u32),
-            }),
-        }))
     }
 
     async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
         let text = self.text();
-        let pos = params
-            .text_document_position
-            .position;
+        let pos = params.text_document_position.position;
         let line_no = pos.line as usize;
         let prefix = text
             .lines()
@@ -125,7 +123,9 @@ impl LanguageServer for TptLanguageServer {
                 while start > 0 && is_word(chars[start - 1]) {
                     start -= 1;
                 }
-                chars[start..col.min(chars.len())].iter().collect::<String>()
+                chars[start..col.min(chars.len())]
+                    .iter()
+                    .collect::<String>()
             })
             .unwrap_or_default();
         let items = completions_at(&text, line_no, &prefix)
@@ -148,6 +148,6 @@ impl LanguageServer for TptLanguageServer {
 pub async fn run_stdio() {
     let stdin = tokio::io::stdin();
     let stdout = tokio::io::stdout();
-    let (service, socket) = LspService::new(|client| TptLanguageServer::new(client));
+    let (service, socket) = LspService::new(TptLanguageServer::new);
     Server::new(stdin, stdout, socket).serve(service).await;
 }

@@ -10,6 +10,11 @@
 //! semantics without adding a GC dependency yet; cycles will leak until a GC
 //! lands.
 
+// The Arc<Mutex<Value>> collections are a documented design divergence
+// (shared mutable semantics without a GC); Value is deliberately not
+// Send+Sync today, which makes clippy's arc_with_non_send_sync inapplicable.
+#![allow(clippy::arc_with_non_send_sync)]
+
 pub mod check;
 mod env;
 pub mod interp;
@@ -20,9 +25,7 @@ mod value;
 
 pub use check::{CheckError, Dim};
 pub use env::Environment;
-pub use interp::{
-    Interpreter, InterpreterError, Repl, ReplOutcome,
-};
+pub use interp::{Interpreter, InterpreterError, Repl, ReplOutcome};
 pub use notebook::{Cell, CellOutput, DisplayData, Notebook};
-pub use ops::{value_add, value_div, value_eq, value_mul, value_sub, LangError};
+pub use ops::{LangError, value_add, value_div, value_eq, value_mul, value_sub};
 pub use value::{Truthiness, Value};

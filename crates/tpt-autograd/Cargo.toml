@@ -5,7 +5,7 @@ edition.workspace = true
 description = "Reverse-mode autodiff tape over tpt-tensor: eager ops, backward pass, custom VJP registration, and multi-device gradient accumulation"
 readme = "README.md"
 keywords = ["autograd", "autodiff", "machine-learning", "gradients", "tensor"]
-categories = ["science", "mathematics", "development-tools"]
+categories = ["science", "algorithms", "development-tools"]
 
 license.workspace = true
 

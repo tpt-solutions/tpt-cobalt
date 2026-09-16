@@ -84,13 +84,13 @@ impl WgpuContext {
     /// drivers), letting callers fall back to the CPU path.
     pub fn try_new() -> Result<Option<Self>, WgpuError> {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::default());
-        let Some(adapter) = pollster::block_on(instance.request_adapter(
-            &wgpu::RequestAdapterOptions {
+        let Some(adapter) =
+            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: wgpu::PowerPreference::LowPower,
                 compatible_surface: None,
                 force_fallback_adapter: false,
-            },
-        )) else {
+            }))
+        else {
             return Ok(None);
         };
         let (device, queue) = pollster::block_on(adapter.request_device(
@@ -173,7 +173,10 @@ impl WgpuContext {
 
 impl WgpuContext {
     fn f32_checked(t: &Tensor, what: &str) {
-        assert!(t.dtype() == DType::F32, "{what} must be f32 for the wgpu backend");
+        assert!(
+            t.dtype() == DType::F32,
+            "{what} must be f32 for the wgpu backend"
+        );
     }
 
     /// Tape-connected GPU add: runs the kernel on the device and records the
@@ -182,20 +185,21 @@ impl WgpuContext {
     /// `backward` flows gradients *through* a GPU node back to host leaves.
     pub fn tape_add(&self, a: &Tensor, b: &Tensor) -> Result<Tensor, WgpuError> {
         let out = self.add(a, b)?;
-        let parents: Vec<std::sync::Arc<tpt_tensor::AutogradNode>> = a
-            .node()
-            .into_iter()
-            .chain(b.node())
-            .collect();
+        let parents: Vec<std::sync::Arc<tpt_tensor::AutogradNode>> =
+            a.node().into_iter().chain(b.node()).collect();
         if parents.is_empty() {
             return Ok(out);
         }
         let closure_parents = parents.clone();
-        Ok(tpt_autograd::custom_vjp(out, parents, move |grad: &Tensor| {
-            for p in &closure_parents {
-                p.accumulate_grad(grad);
-            }
-        }))
+        Ok(tpt_autograd::custom_vjp(
+            out,
+            parents,
+            move |grad: &Tensor| {
+                for p in &closure_parents {
+                    p.accumulate_grad(grad);
+                }
+            },
+        ))
     }
 
     /// Element-wise add of two same-shaped F32 tensors on the GPU.
@@ -220,9 +224,18 @@ impl WgpuContext {
                 label: None,
                 layout: &layout,
                 entries: &[
-                    wgpu::BindGroupEntry { binding: 0, resource: buf_a.as_entire_binding() },
-                    wgpu::BindGroupEntry { binding: 1, resource: buf_b.as_entire_binding() },
-                    wgpu::BindGroupEntry { binding: 2, resource: out.as_entire_binding() },
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: buf_a.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: buf_b.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: out.as_entire_binding(),
+                    },
                 ],
             })
         };
@@ -281,10 +294,22 @@ impl WgpuContext {
                 label: None,
                 layout: &layout,
                 entries: &[
-                    wgpu::BindGroupEntry { binding: 0, resource: dims_buf.as_entire_binding() },
-                    wgpu::BindGroupEntry { binding: 1, resource: buf_a.as_entire_binding() },
-                    wgpu::BindGroupEntry { binding: 2, resource: buf_b.as_entire_binding() },
-                    wgpu::BindGroupEntry { binding: 3, resource: out.as_entire_binding() },
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: dims_buf.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: buf_a.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: buf_b.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: out.as_entire_binding(),
+                    },
                 ],
             })
         };
@@ -304,7 +329,11 @@ impl WgpuContext {
         }
         self.queue.submit(Some(encoder.finish()));
         let data = self.readback(&out, &stage, out_len)?;
-        Ok(Tensor::from_le_bytes(data, DType::F32, &[m as usize, n as usize]))
+        Ok(Tensor::from_le_bytes(
+            data,
+            DType::F32,
+            &[m as usize, n as usize],
+        ))
     }
 }
 
@@ -347,17 +376,13 @@ mod tests {
         let b = f32_tensor(&[10.0, 20.0, 30.0, 40.0]).with_autograd();
         let s = ctx.tape_add(&a, &b).expect("tape gpu add");
         assert!(s.requires_grad(), "gpu result must carry a tape node");
-        let seed = Tensor::from_typed(vec![2.0_f32; 4]).reshape(s.shape()).unwrap();
+        let seed = Tensor::from_typed(vec![2.0_f32; 4])
+            .reshape(s.shape())
+            .unwrap();
         tpt_autograd::backward_seeded(&s, &seed);
         // d(2*(a+b))/da = 2 ; d(...)/db = 2
-        assert_eq!(
-            a.grad().unwrap().to_vec::<f32>().unwrap(),
-            vec![2.0; 4]
-        );
-        assert_eq!(
-            b.grad().unwrap().to_vec::<f32>().unwrap(),
-            vec![2.0; 4]
-        );
+        assert_eq!(a.grad().unwrap().to_vec::<f32>().unwrap(), vec![2.0; 4]);
+        assert_eq!(b.grad().unwrap().to_vec::<f32>().unwrap(), vec![2.0; 4]);
     }
 
     #[test]
@@ -399,4 +424,3 @@ mod tests {
         }
     }
 }
-

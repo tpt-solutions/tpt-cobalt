@@ -3,7 +3,7 @@
 //!
 //! Run with: `cargo run -p tpt-tensor --example basic_ops`
 
-use tpt_tensor::{Device, DType, Tensor};
+use tpt_tensor::{DType, Device, Tensor};
 
 fn main() {
     // Build from flat data and reshape (row-major).
@@ -20,7 +20,11 @@ fn main() {
 
     // Matrix multiply and transpose.
     let m = a.matmul(&b);
-    println!("a @ 1    = {:?} (shape {:?})", m.to_vec::<f64>().unwrap(), m.shape());
+    println!(
+        "a @ 1    = {:?} (shape {:?})",
+        m.to_vec::<f64>().unwrap(),
+        m.shape()
+    );
     println!("a^T      = {:?}", a.transpose().to_vec::<f64>().unwrap());
 
     // Reductions.
@@ -33,7 +37,11 @@ fn main() {
     assert_eq!(a.ndim(), 2);
     assert_eq!(a.numel(), 4);
     assert_eq!(a.device(), Device::Cpu);
-    println!("meta     = dtype F64, shape {:?}, {} elements", a.shape(), a.numel());
+    println!(
+        "meta     = dtype F64, shape {:?}, {} elements",
+        a.shape(),
+        a.numel()
+    );
 
     // Trainable leaves carry an autograd node slot for tpt-autograd.
     let w = Tensor::from_typed(vec![0.5_f64]).with_autograd();

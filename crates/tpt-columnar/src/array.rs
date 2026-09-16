@@ -10,7 +10,6 @@ use std::fmt::Debug;
 use std::sync::Arc;
 
 use crate::datatypes::DataType;
-use crate::error::ColumnarError;
 
 /// A type-erased column of values.
 pub trait Array: Send + Sync + Debug {
@@ -214,7 +213,6 @@ impl<T: Send + Sync + Copy + Debug + PartialEq + ColumnType + 'static> Array for
         self
     }
 }
-
 
 /// Convenience aliases matching the rest of the workspace's naming.
 pub type Float64Array = PrimitiveArray<f64>;

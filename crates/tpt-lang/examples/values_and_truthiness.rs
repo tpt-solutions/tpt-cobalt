@@ -5,7 +5,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use tpt_lang::{value_add, value_div, value_eq, Truthiness, Value};
+use tpt_lang::{Truthiness, Value, value_add, value_div, value_eq};
 use tpt_tensor::Tensor;
 
 fn main() {

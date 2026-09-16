@@ -2,10 +2,8 @@
 
 use std::sync::Arc;
 
-use crate::array::{
-    Array, ArrayRef, BinaryArray, BooleanArray, PrimitiveArray, StringArray,
-};
-use crate::datatypes::{put_u32, read_u32, DataType};
+use crate::array::{Array, ArrayRef, BinaryArray, BooleanArray, PrimitiveArray, StringArray};
+use crate::datatypes::{DataType, put_u32, read_u32};
 use crate::error::ColumnarError;
 
 pub(crate) fn encode_array(arr: &dyn Array, out: &mut Vec<u8>) {

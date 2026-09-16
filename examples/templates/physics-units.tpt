@@ -1,0 +1,15 @@
+# Unit-checked physics.
+# Try `cargo run --release -p tpt-lang --bin tpt -- check examples/templates/physics-units.tpt`
+# then change `m` to `s` anywhere and watch the compiler reject it.
+
+let g = 9.81 m/s^2
+let mass = 2.0 kg
+let t = 1.5 s
+
+let force = mass * g            # kg * m/s^2 = N
+let impulse = force * t         # N * s
+let height = 0.5 * g * t * t    # m
+
+print "force   = {force}"
+print "impulse = {impulse}"
+print "drop    = {height} after {t}"

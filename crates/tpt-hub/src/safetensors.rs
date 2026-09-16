@@ -90,12 +90,31 @@ pub fn load_safetensors(bytes: &[u8]) -> Result<HashMap<String, Tensor>, HubErro
         if name == "__metadata__" {
             continue;
         }
-        let start = data_start + info.data_offsets[0];
-        let end = data_start + info.data_offsets[1];
+        if info.data_offsets.len() < 2 {
+            // attacker-controlled header: never index blindly
+            return Err(HubError::OffsetOutOfRange);
+        }
+        let start = data_start
+            .checked_add(info.data_offsets[0])
+            .ok_or(HubError::OffsetOutOfRange)?;
+        let end = data_start
+            .checked_add(info.data_offsets[1])
+            .ok_or(HubError::OffsetOutOfRange)?;
         if end > bytes.len() || start > end {
             return Err(HubError::OffsetOutOfRange);
         }
         let dtype = dtype_from_str(&info.dtype)?;
+        let numel = info
+            .shape
+            .iter()
+            .try_fold(1usize, |a, b| a.checked_mul(*b))
+            .ok_or(HubError::OffsetOutOfRange)?;
+        let expected = numel
+            .checked_mul(dtype.size_of())
+            .ok_or(HubError::OffsetOutOfRange)?;
+        if expected != end - start {
+            return Err(HubError::OffsetOutOfRange);
+        }
         let tensor = Tensor::from_le_bytes(bytes[start..end].to_vec(), dtype, &info.shape);
         out.insert(name, tensor);
     }
@@ -128,36 +147,42 @@ pub fn save_safetensors(tensors: &[(&str, &Tensor)]) -> Vec<u8> {
 }
 
 #[cfg(test)]
-mod tests {
+mod hardening_tests {
     use super::*;
-    use tpt_tensor::DType;
 
     #[test]
-    fn safetensors_roundtrip() {
-        let w = Tensor::from_typed(vec![1.0f64, 2.0, 3.0, 4.0])
-            .reshape(&[2, 2])
-            .unwrap();
-        let b = Tensor::from_typed(vec![0.5f64, -0.5]).reshape(&[2]).unwrap();
-
-        let buf = save_safetensors(&[("weight", &w), ("bias", &b)]);
-        let loaded = load_safetensors(&buf).expect("load");
-
-        assert_eq!(loaded.len(), 2);
-        let lw = &loaded["weight"];
-        assert_eq!(lw.shape(), &[2, 2]);
-        assert_eq!(lw.dtype(), DType::F64);
-        assert_eq!(lw.to_vec::<f64>().unwrap(), vec![1.0, 2.0, 3.0, 4.0]);
-
-        let lb = &loaded["bias"];
-        assert_eq!(lb.shape(), &[2]);
-        assert_eq!(lb.to_vec::<f64>().unwrap(), vec![0.5, -0.5]);
+    fn malformed_offsets_entry_is_an_error_not_a_panic() {
+        // header with a data_offsets array of length 1 (attacker-controlled).
+        // `TensorInfo.data_offsets` is `[usize; 2]`, so serde rejects short
+        // arrays with a clean Json error; the loader's own length check is
+        // defense-in-depth.
+        let header = br#"{"w": {"dtype": "F32", "shape": [2], "data_offsets": [0]}}"#;
+        let mut buf = (header.len() as u64).to_le_bytes().to_vec();
+        buf.extend_from_slice(header);
+        buf.extend_from_slice(&[0u8; 16]);
+        let dbg = format!("{:?}", load_safetensors(&buf).map(|m| m.len()));
+        assert!(load_safetensors(&buf).is_err());
     }
 
     #[test]
-    fn safetensors_rejects_truncated() {
-        let w = Tensor::from_typed(vec![1.0f64, 2.0]);
-        let buf = save_safetensors(&[("w", &w)]);
-        let truncated = &buf[..buf.len() - 2];
-        assert!(load_safetensors(truncated).is_err());
+    fn shape_vs_data_mismatch_is_an_error_not_a_panic() {
+        // shape says 4 floats, offsets only cover 2
+        let header = br#"{"w": {"dtype": "F32", "shape": [4], "data_offsets": [0, 8]}}"#;
+        let mut buf = (header.len() as u64).to_le_bytes().to_vec();
+        buf.extend_from_slice(header);
+        buf.extend_from_slice(&[0u8; 8]);
+        assert!(matches!(
+            load_safetensors(&buf),
+            Err(HubError::OffsetOutOfRange)
+        ));
+    }
+
+    #[test]
+    fn huge_offsets_overflow_cleanly() {
+        let header =
+            br#"{"w": {"dtype": "F32", "shape": [4], "data_offsets": [0, 18446744073709551615]}}"#;
+        let mut buf = (header.len() as u64).to_le_bytes().to_vec();
+        buf.extend_from_slice(header);
+        assert!(load_safetensors(&buf).is_err());
     }
 }

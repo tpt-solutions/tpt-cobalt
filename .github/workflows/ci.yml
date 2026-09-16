@@ -1,0 +1,96 @@
+# TPT Cobalt CI
+#
+# Blocking: workspace build + test, first-party metadata validation.
+# Report-only: clippy over the first-party crates (cleaning the ~50 historic
+# lints is tracked in todo.md; the gate tightens once that lands).
+# Manual: the CUDA job needs a GPU runner (self-hosted or a hosted-GPU
+# provider) and only fires on workflow_dispatch.
+
+name: ci
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  # the physics DEM integration tests take ~10 min each in debug
+  CARGO_INCREMENTAL: 1
+
+jobs:
+  build-and-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build workspace
+        run: cargo build --workspace
+      - name: Test core crates (tensor..lang, sci, fusion, deploy, lsp, bench)
+        run: >
+          cargo test -p tpt-tensor -p tpt-autograd -p tpt-ml -p tpt-hub
+          -p tpt-runtime -p tpt-sci -p tpt-lang -p tpt-fusion
+          -p tpt-alloy-deploy -p tpt-lsp -p tpt-bench -p tpt-approx
+          -p tpt-columnar -p tpt-sym -p tpt-ui-macro
+      - name: Test newly wired science crates
+        run: >
+          cargo test -p tpt-sci-md -p tpt-sci-kinetics -p tpt-sci-cfd-core
+          -p tpt-sci-climate -p tpt-sci-ocean -p tpt-sci-hemodynamics
+          -p tpt-sci-electrophys -p tpt-sci-dft-classical
+      - name: Test full workspace (forked pillars)
+        if: matrix.os == 'ubuntu-latest'
+        run: cargo test --workspace --no-fail-fast
+        continue-on-error: false
+
+  metadata:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate first-party crate metadata
+        run: python scripts/validate_metadata.py
+      - name: Manifests parse
+        run: cargo metadata --no-deps --format-version 1 > /dev/null
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - name: Clippy (first-party crates, blocking)
+        run: >
+          cargo clippy --no-deps -p tpt-tensor -p tpt-autograd -p tpt-ml
+          -p tpt-hub -p tpt-runtime -p tpt-sci -p tpt-lang -p tpt-fusion
+          -p tpt-alloy-deploy -p tpt-lsp -p tpt-bench -p tpt-approx
+          -p tpt-columnar -p tpt-sym -p tpt-ui-macro -- -D warnings
+      - name: rustfmt (first-party crates)
+        run: >
+          cargo fmt -p tpt-tensor -p tpt-autograd -p tpt-ml -p tpt-hub
+          -p tpt-runtime -p tpt-sci -p tpt-lang -p tpt-fusion
+          -p tpt-alloy-deploy -p tpt-lsp -p tpt-bench -p tpt-approx
+          -p tpt-columnar -p tpt-sym -p tpt-ui-macro --check
+
+  # Needs a GPU runner. Trigger explicitly: `gh workflow run ci` on a repo
+  # with a self-hosted GPU runner labelled `gpu`. The CUDA feature links
+  # against cuda.lib, so the runner needs the CUDA toolkit installed.
+  cuda:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: [self-hosted, gpu]
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: CUDA backend tests (live GPU)
+        run: cargo test -p tpt-runtime --features cuda cuda_backend

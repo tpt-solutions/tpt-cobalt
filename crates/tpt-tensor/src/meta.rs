@@ -1,4 +1,4 @@
-use crate::{Device, DType};
+use crate::{DType, Device};
 
 /// Tensor shape: one extent per axis, row-major by convention.
 pub type Shape = Vec<usize>;

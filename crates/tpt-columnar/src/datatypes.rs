@@ -44,7 +44,7 @@ impl DataType {
             other => {
                 return Err(ColumnarError::ParseError(format!(
                     "unknown data type '{other}'"
-                )))
+                )));
             }
         })
     }
@@ -75,7 +75,7 @@ impl DataType {
             other => {
                 return Err(ColumnarError::ParseError(format!(
                     "unknown data type tag {other}"
-                )))
+                )));
             }
         })
     }
@@ -134,9 +134,7 @@ impl Schema {
         self.fields
             .iter()
             .position(|f| f.name() == name)
-            .ok_or_else(|| {
-                ColumnarError::InvalidArgumentError(format!("field '{name}' not found"))
-            })
+            .ok_or_else(|| ColumnarError::InvalidArgumentError(format!("field '{name}' not found")))
     }
 
     pub(crate) fn encode_into(&self, out: &mut Vec<u8>) {

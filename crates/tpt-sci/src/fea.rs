@@ -12,8 +12,8 @@
 #![allow(non_snake_case)]
 
 use tpt_autograd::custom_vjp;
-use tpt_tensor::{Tensor, DType};
 use tpt_math_linalg_dense::{DMatrix, DVector};
+use tpt_tensor::{DType, Tensor};
 
 /// Differentiable dense linear solve: `K u = f`.
 ///
@@ -34,16 +34,11 @@ pub fn solve_linear(K: &Tensor, f: &Tensor) -> Tensor {
     let n = K.shape()[0];
     assert_eq!(K.shape()[1], n, "K must be square");
 
-    // Handle f as vector [n] or [n, 1]
-    let f_vec = if f.ndim() == 1 {
-        assert_eq!(f.shape()[0], n, "f dimension mismatch");
-        f.to_vec::<f64>().unwrap()
-    } else if f.ndim() == 2 && f.shape()[1] == 1 {
-        assert_eq!(f.shape()[0], n, "f dimension mismatch");
-        f.to_vec::<f64>().unwrap()
-    } else {
-        panic!("f must be [n] or [n, 1]");
-    };
+    // Handle f as vector [n] or [n, 1] (same element order either way)
+    let ok_shape = f.ndim() == 1 || (f.ndim() == 2 && f.shape()[1] == 1);
+    assert!(ok_shape, "f must be [n] or [n, 1]");
+    assert_eq!(f.shape()[0], n, "f dimension mismatch");
+    let f_vec = f.to_vec::<f64>().unwrap();
 
     // Convert to DMatrix/DVector for the solve
     let K_data = K.to_vec::<f64>().unwrap();
@@ -51,7 +46,9 @@ pub fn solve_linear(K: &Tensor, f: &Tensor) -> Tensor {
     let f_vec = DVector::from_vec(f_vec);
 
     // Forward solve: K u = f
-    let u_vec = K_mat.solve(&f_vec).expect("Linear solve failed: K is singular");
+    let u_vec = K_mat
+        .solve(&f_vec)
+        .expect("Linear solve failed: K is singular");
 
     // Result tensor with autograd
     let u_data: Vec<f64> = (0..n).map(|i| u_vec[i]).collect();
@@ -65,8 +62,8 @@ pub fn solve_linear(K: &Tensor, f: &Tensor) -> Tensor {
     }
 
     // Get autograd nodes
-    let K_node = K.node().map(|x| x.clone());
-    let f_node = f.node().map(|x| x.clone());
+    let K_node = K.node();
+    let f_node = f.node();
     let mut parents: Vec<_> = Vec::new();
     if let Some(ref kn) = K_node {
         parents.push(kn.clone());
@@ -84,7 +81,9 @@ pub fn solve_linear(K: &Tensor, f: &Tensor) -> Tensor {
 
         // K^T = K.transpose() for symmetric K, but we handle general case
         let K_t = K_mat.transpose();
-        let lambda_vec = K_t.solve(&grad_u_vec).expect("Adjoint solve failed: K^T is singular");
+        let lambda_vec = K_t
+            .solve(&grad_u_vec)
+            .expect("Adjoint solve failed: K^T is singular");
 
         // Gradient w.r.t. f: dL/df = λ
         if let Some(f_node) = &f_node {
@@ -206,12 +205,12 @@ mod tests {
         // u = [1, 1], grad_u = u = [1, 1]
         // Adjoint: K^T λ = [1, 1] -> λ = [1/3, 1/3]
         // dL/df = λ = [1/3, 1/3]
-        assert!((grad_f[0] - 1.0/3.0).abs() < 1e-4);
-        assert!((grad_f[1] - 1.0/3.0).abs() < 1e-4);
+        assert!((grad_f[0] - 1.0 / 3.0).abs() < 1e-4);
+        assert!((grad_f[1] - 1.0 / 3.0).abs() < 1e-4);
 
         // dL/dK = -λ ⊗ u^T = -[1/3, 1/3] ⊗ [1, 1] = [[-1/3, -1/3], [-1/3, -1/3]]
         for g in &grad_K {
-            assert!((g + 1.0/3.0).abs() < 1e-4, "grad_K = {:?}", grad_K);
+            assert!((g + 1.0 / 3.0).abs() < 1e-4, "grad_K = {:?}", grad_K);
         }
     }
 }

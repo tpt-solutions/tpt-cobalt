@@ -26,10 +26,7 @@ impl Linear {
             .unwrap()
             .with_autograd();
         let b = if bias {
-            Some(
-                Tensor::from_typed(vec![0.0f64; out_features])
-                    .with_autograd(),
-            )
+            Some(Tensor::from_typed(vec![0.0f64; out_features]).with_autograd())
         } else {
             None
         };
@@ -79,6 +76,12 @@ impl Module for Linear {
 /// A stack of modules evaluated in order.
 pub struct Sequential {
     layers: Vec<Box<dyn Module>>,
+}
+
+impl Default for Sequential {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Sequential {

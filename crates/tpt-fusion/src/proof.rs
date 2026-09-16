@@ -19,14 +19,14 @@
 //! the host — documented and deliberate.
 
 use tpt_ml::Module;
-use tpt_telos_uir_bridge::{prove_memory_bounds, MemoryLimits, ProofResult};
+use tpt_telos_uir_bridge::{MemoryLimits, ProofResult, prove_memory_bounds};
 use tpt_uir_core::attr::{Attribute, AttributeValue};
 use tpt_uir_core::ir::Region;
 use tpt_uir_core::op_name::OpName;
 use tpt_uir_core::types::{Dimension, ScalarType, ShapeSpec, TensorType, Type};
 use tpt_uir_core::{Block, Operation};
 
-use crate::{DeviceConfig, DType, FusionError};
+use crate::{DType, DeviceConfig, FusionError};
 
 /// One dimension of an allocation: fixed, or symbolic with an upper bound
 /// the proof quantifies over (`0 ≤ b ≤ max`).
@@ -166,8 +166,16 @@ pub fn build_manifest_proved(
     let mut allocs: Vec<AllocTensor> = Vec::new();
     for k in &manifest.kernels {
         let (m, n, k_dim) = (k.gemm.m, k.gemm.n, k.gemm.k);
-        allocs.push(AllocTensor::fixed(format!("{}_A", k.name), dtype, &[m, k_dim]));
-        allocs.push(AllocTensor::fixed(format!("{}_B", k.name), dtype, &[k_dim, n]));
+        allocs.push(AllocTensor::fixed(
+            format!("{}_A", k.name),
+            dtype,
+            &[m, k_dim],
+        ));
+        allocs.push(AllocTensor::fixed(
+            format!("{}_B", k.name),
+            dtype,
+            &[k_dim, n],
+        ));
         allocs.push(AllocTensor::fixed(format!("{}_C", k.name), dtype, &[m, n]));
     }
     allocs.extend_from_slice(extra_allocs);
@@ -185,9 +193,7 @@ pub fn build_manifest_proved(
                 limit_bytes
             ),
         }),
-        ProofResult::Inconclusive { reason } => {
-            Err(FusionError::ProofInconclusive(reason.clone()))
-        }
+        ProofResult::Inconclusive { reason } => Err(FusionError::ProofInconclusive(reason.clone())),
     }
 }
 
@@ -199,9 +205,7 @@ pub fn allocs_from_module(model: &dyn Module) -> Vec<AllocTensor> {
         .parameters()
         .iter()
         .enumerate()
-        .map(|(i, t)| {
-            AllocTensor::fixed(format!("param_{i}"), DType::F32, t.shape())
-        })
+        .map(|(i, t)| AllocTensor::fixed(format!("param_{i}"), DType::F32, t.shape()))
         .collect()
 }
 
@@ -209,8 +213,8 @@ pub fn allocs_from_module(model: &dyn Module) -> Vec<AllocTensor> {
 mod tests {
     use super::*;
     use crate::{TileConfig, Vendor};
-    use tpt_catalyst::ir::{ComputationalGraph, Edge, ModelMetadata, OpNode};
     use std::collections::HashMap;
+    use tpt_catalyst::ir::{ComputationalGraph, Edge, ModelMetadata, OpNode};
 
     fn device(global: usize) -> DeviceConfig {
         DeviceConfig::new("test.platform", Vendor::Xilinx, 1 << 20, global, 300.0)
@@ -295,7 +299,11 @@ mod tests {
             },
         ];
         let proof = prove_model_memory(&device(16 << 20), &allocs).unwrap();
-        assert!(matches!(proof.result, ProofResult::Valid), "{:?}", proof.result);
+        assert!(
+            matches!(proof.result, ProofResult::Valid),
+            "{:?}",
+            proof.result
+        );
         assert_eq!(proof.static_bytes, None);
 
         // batch ≤ 32 → 33 MiB worst case: must overflow with a witness
@@ -354,14 +362,8 @@ mod tests {
 
         // 1 MiB device: tile fit passes (20 KiB on-chip) but the global
         // proof must still refuse emission
-        let err = build_manifest_proved(
-            &gemm_ir(),
-            &device(1 << 20),
-            tile(),
-            DType::F32,
-            &[],
-        )
-        .unwrap_err();
+        let err = build_manifest_proved(&gemm_ir(), &device(1 << 20), tile(), DType::F32, &[])
+            .unwrap_err();
         assert!(matches!(err, FusionError::ProofFailed { .. }), "{err:?}");
     }
 
@@ -376,7 +378,13 @@ mod tests {
         assert_eq!(allocs.len(), 6, "2 params per Linear");
         // (512·2048 + 2048 + 2048·512 + 512 + 512·512 + 512) params × 4 B
         let expected = (512 * 2048 + 2048 + 2048 * 512 + 512 + 512 * 512 + 512) * 4;
-        assert_eq!(allocs.iter().map(|a| a.bytes_static().unwrap()).sum::<usize>(), expected);
+        assert_eq!(
+            allocs
+                .iter()
+                .map(|a| a.bytes_static().unwrap())
+                .sum::<usize>(),
+            expected
+        );
 
         let proof = prove_model_memory(&device(16 << 20), &allocs).unwrap();
         assert!(matches!(proof.result, ProofResult::Valid));

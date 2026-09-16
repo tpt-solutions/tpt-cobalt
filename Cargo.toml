@@ -159,10 +159,20 @@ members = [
     "forked/tpt-rust6/crates/tpt-io",
     "forked/tpt-rust6/crates/tpt-learn",
     "forked/tpt-rust6/crates/tpt-omni",
+    "forked/tpt-rust6/crates/tpt-sym",
+    "forked/tpt-rust6/crates/tpt-ui-macro",
     "forked/tpt-rust6/crates/tpt-script",
     "forked/tpt-rust6/crates/tpt-stat",
     "forked/tpt-rust6/crates/tpt-viz",
     "forked/tpt-science/crates/tpt-sci-astro",
+    "forked/tpt-science/crates/tpt-sci-cfd-core",
+    "forked/tpt-science/crates/tpt-sci-climate",
+    "forked/tpt-science/crates/tpt-sci-dft-classical",
+    "forked/tpt-science/crates/tpt-sci-electrophys",
+    "forked/tpt-science/crates/tpt-sci-hemodynamics",
+    "forked/tpt-science/crates/tpt-sci-kinetics",
+    "forked/tpt-science/crates/tpt-sci-md",
+    "forked/tpt-science/crates/tpt-sci-ocean",
     "forked/tpt-science/crates/tpt-sci-grid",
     "forked/tpt-science/crates/tpt-sci-image",
     "forked/tpt-science/crates/tpt-sci-ode",
@@ -367,9 +377,9 @@ pollster = "0.3"
 cust = "0.3"
 tpt-omni = { path = "forked/tpt-rust6/crates/tpt-omni" }
 tpt-io = { path = "forked/tpt-rust6/crates/tpt-io" }
-tpt-sym = { path = "crates/tpt-sym" }
+tpt-sym = { version = "0.1.0", path = "forked/tpt-rust6/crates/tpt-sym" }
 tpt-grad-macro = { path = "forked/tpt-rust6/crates/tpt-grad-macro" }
-tpt-ui-macro = { path = "crates/tpt-ui-macro" }
+tpt-ui-macro = { version = "0.1.0", path = "forked/tpt-rust6/crates/tpt-ui-macro" }
 tpt-columnar = { path = "crates/tpt-columnar" }
 ndarray = { version = "0.16", features = ["rayon"] }
 num-complex = "0.4"
@@ -382,14 +392,14 @@ tpt-catalyst = { version = "0.1.0", path = "forked/tpt-crucible/crates/tpt-catal
 tpt-alloy = { version = "0.1.0", path = "forked/tpt-crucible/crates/tpt-alloy" }
 tpt-telos-uir-bridge = { version = "0.2.0", path = "forked/tpt-telos/crates/tpt-telos-uir-bridge" }
 tpt-uir-core = { version = "0.1.0", path = "forked/tpt-uir/crates/tpt-uir-core" }
-tpt-sci-md = { version = "0.1.0", path = "crates/tpt-sci-md" }
-tpt-sci-dft-classical = { version = "0.1.0", path = "crates/tpt-sci-dft-classical" }
-tpt-sci-kinetics = { version = "0.1.0", path = "crates/tpt-sci-kinetics" }
-tpt-sci-cfd-core = { version = "0.1.0", path = "crates/tpt-sci-cfd-core" }
-tpt-sci-hemodynamics = { version = "0.1.0", path = "crates/tpt-sci-hemodynamics" }
-tpt-sci-electrophys = { version = "0.1.0", path = "crates/tpt-sci-electrophys" }
-tpt-sci-climate = { version = "0.1.0", path = "crates/tpt-sci-climate" }
-tpt-sci-ocean = { version = "0.1.0", path = "crates/tpt-sci-ocean" }
+tpt-sci-md = { version = "0.1.0", path = "forked/tpt-science/crates/tpt-sci-md" }
+tpt-sci-dft-classical = { version = "0.1.0", path = "forked/tpt-science/crates/tpt-sci-dft-classical" }
+tpt-sci-kinetics = { version = "0.1.0", path = "forked/tpt-science/crates/tpt-sci-kinetics" }
+tpt-sci-cfd-core = { version = "0.1.0", path = "forked/tpt-science/crates/tpt-sci-cfd-core" }
+tpt-sci-hemodynamics = { version = "0.1.0", path = "forked/tpt-science/crates/tpt-sci-hemodynamics" }
+tpt-sci-electrophys = { version = "0.1.0", path = "forked/tpt-science/crates/tpt-sci-electrophys" }
+tpt-sci-climate = { version = "0.1.0", path = "forked/tpt-science/crates/tpt-sci-climate" }
+tpt-sci-ocean = { version = "0.1.0", path = "forked/tpt-science/crates/tpt-sci-ocean" }
 tpt-sci-dft-electronic = { version = "0.1.0", path = "crates/tpt-sci-dft-electronic" }
 
 [workspace.lints]

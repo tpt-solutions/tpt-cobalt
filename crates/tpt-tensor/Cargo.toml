@@ -6,7 +6,7 @@ license.workspace = true
 description = "Device-agnostic, zero-copy tensor type with dtype dispatch, layouts, and CPU storage — the foundation of the tpt-cobalt ML stack"
 readme = "README.md"
 keywords = ["tensor", "machine-learning", "autograd", "numerical", "arrays"]
-categories = ["data-structures", "science", "mathematics"]
+categories = ["data-structures", "science", "algorithms"]
 
 [dependencies]
 thiserror = { workspace = true }

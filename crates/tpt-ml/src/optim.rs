@@ -112,8 +112,8 @@ impl Optimizer for AdamW {
                     v[j] = self.beta2 * v[j] + (1.0 - self.beta2) * g[j] * g[j];
                     let mhat = m[j] / bc1;
                     let vhat = v[j] / bc2;
-                    new_val[j] =
-                        val[j] - self.lr * (mhat / (vhat.sqrt() + self.eps) + self.weight_decay * val[j]);
+                    new_val[j] = val[j]
+                        - self.lr * (mhat / (vhat.sqrt() + self.eps) + self.weight_decay * val[j]);
                 }
                 p.set_values(new_val);
             }
@@ -194,7 +194,8 @@ impl<'a, O: Optimizer> ExponentialLR<'a, O> {
 impl<'a, O: Optimizer> LrScheduler for ExponentialLR<'a, O> {
     fn step(&mut self) {
         self.epoch += 1;
-        self.opt.set_lr(self.base_lr * self.gamma.powf(self.epoch as f64));
+        self.opt
+            .set_lr(self.base_lr * self.gamma.powf(self.epoch as f64));
     }
 
     fn get_lr(&self) -> f64 {
@@ -298,7 +299,10 @@ mod tests {
         let w_grad = model.weight.grad().expect("weight should have grad");
         assert_eq!(w_grad.shape(), &[3, 2]);
         // d(sum y)/dW[in][out] = x[in]  (x = [1,2,3])
-        assert_eq!(w_grad.to_vec::<f64>().unwrap(), vec![1.0, 1.0, 2.0, 2.0, 3.0, 3.0]);
+        assert_eq!(
+            w_grad.to_vec::<f64>().unwrap(),
+            vec![1.0, 1.0, 2.0, 2.0, 3.0, 3.0]
+        );
 
         let before = model.weight.to_vec::<f64>().unwrap();
         let mut params = model.parameters();

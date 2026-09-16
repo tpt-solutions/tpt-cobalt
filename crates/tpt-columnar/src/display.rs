@@ -1,21 +1,15 @@
 //! Display helpers for column values.
 
-use crate::array::{Array, ArrayRef, BinaryArray, BooleanArray, PrimitiveArray, StringArray};
+use crate::array::{Array, ArrayRef, BinaryArray, PrimitiveArray, StringArray};
 use crate::datatypes::DataType;
 use crate::error::ColumnarError;
 use std::fmt;
 
 /// Formatting knobs (kept minimal; parity with downstream call sites).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct FormatOptions {
     /// Render `null` values as this literal.
     pub null: &'static str,
-}
-
-impl Default for FormatOptions {
-    fn default() -> Self {
-        Self { null: "" }
-    }
 }
 
 impl FormatOptions {

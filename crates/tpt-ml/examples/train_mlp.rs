@@ -4,7 +4,7 @@
 //! Run with: `cargo run -p tpt-ml --example train_mlp`
 
 use tpt_autograd::backward;
-use tpt_ml::{mse, AdamW, Linear, Module, Optimizer, Sequential};
+use tpt_ml::{AdamW, Linear, Module, Optimizer, Sequential, mse};
 use tpt_tensor::Tensor;
 
 fn batch(vals: &[f64]) -> Tensor {
@@ -32,8 +32,7 @@ fn main() {
         // leaves (`set_values` detaches the tape).
         let mut params = net.parameters();
         opt.step(&mut params);
-        let params: Vec<Tensor> =
-            params.into_iter().map(|p| p.with_autograd()).collect();
+        let params: Vec<Tensor> = params.into_iter().map(|p| p.with_autograd()).collect();
         net.set_parameters(params);
 
         if epoch % 50 == 0 || epoch == 199 {

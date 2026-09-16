@@ -65,37 +65,37 @@ impl Expr {
             Expr::Add(a, b) => {
                 let (a, b) = (a.simplify(), b.simplify());
                 match (&a, &b) {
-                    (Expr::Const(0.0), _) => return b,
-                    (_, Expr::Const(0.0)) => return a,
-                    (Expr::Const(x), Expr::Const(y)) => return Expr::Const(x + y),
-                    (a, b) if a == b => return a.clone() * Expr::Const(2.0),
+                    (Expr::Const(0.0), _) => b,
+                    (_, Expr::Const(0.0)) => a,
+                    (Expr::Const(x), Expr::Const(y)) => Expr::Const(x + y),
+                    (a, b) if a == b => a.clone() * Expr::Const(2.0),
                     _ => Expr::Add(Box::new(a), Box::new(b)),
                 }
             }
             Expr::Sub(a, b) => {
                 let (a, b) = (a.simplify(), b.simplify());
                 match (&a, &b) {
-                    (_, Expr::Const(0.0)) => return a,
-                    (Expr::Const(x), Expr::Const(y)) => return Expr::Const(x - y),
+                    (_, Expr::Const(0.0)) => a,
+                    (Expr::Const(x), Expr::Const(y)) => Expr::Const(x - y),
                     _ => Expr::Sub(Box::new(a), Box::new(b)),
                 }
             }
             Expr::Mul(a, b) => {
                 let (a, b) = (a.simplify(), b.simplify());
                 match (&a, &b) {
-                    (Expr::Const(0.0), _) | (_, Expr::Const(0.0)) => return Expr::Const(0.0),
-                    (Expr::Const(1.0), _) => return b,
-                    (_, Expr::Const(1.0)) => return a,
-                    (Expr::Const(x), Expr::Const(y)) => return Expr::Const(x * y),
+                    (Expr::Const(0.0), _) | (_, Expr::Const(0.0)) => Expr::Const(0.0),
+                    (Expr::Const(1.0), _) => b,
+                    (_, Expr::Const(1.0)) => a,
+                    (Expr::Const(x), Expr::Const(y)) => Expr::Const(x * y),
                     _ => Expr::Mul(Box::new(a), Box::new(b)),
                 }
             }
             Expr::Div(a, b) => {
                 let (a, b) = (a.simplify(), b.simplify());
                 match (&a, &b) {
-                    (_, Expr::Const(1.0)) => return a,
-                    (Expr::Const(0.0), _) => return Expr::Const(0.0),
-                    (Expr::Const(x), Expr::Const(y)) => return Expr::Const(x / y),
+                    (_, Expr::Const(1.0)) => a,
+                    (Expr::Const(0.0), _) => Expr::Const(0.0),
+                    (Expr::Const(x), Expr::Const(y)) => Expr::Const(x / y),
                     _ => Expr::Div(Box::new(a), Box::new(b)),
                 }
             }

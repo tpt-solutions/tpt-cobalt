@@ -5,13 +5,15 @@
 
 use tpt_math_linalg::tpt_math_linalg_dense::DMatrix;
 
-use crate::dtype::DTypeError;
 use crate::Tensor;
+use crate::dtype::DTypeError;
 
 /// Convert a 2-D f64 `Tensor` into a `tpt-math-linalg` `DMatrix` (row-major).
 pub fn to_dmatrix(t: &Tensor) -> Result<DMatrix<f64>, DTypeError> {
     if t.ndim() != 2 {
-        return Err(DTypeError::Unsupported("linalg bridge requires 2-D tensors"));
+        return Err(DTypeError::Unsupported(
+            "linalg bridge requires 2-D tensors",
+        ));
     }
     if t.dtype() != crate::DType::F64 {
         return Err(DTypeError::Unsupported("linalg bridge requires f64"));
@@ -55,6 +57,9 @@ mod tests {
         assert_eq!(c.to_vec::<f64>().unwrap(), vec![2.0, 1.0, 4.0, 3.0]);
         // round-trip DMatrix <-> Tensor preserves values
         let m = to_dmatrix(&a).unwrap();
-        assert_eq!(from_dmatrix(&m).to_vec::<f64>().unwrap(), vec![1.0, 2.0, 3.0, 4.0]);
+        assert_eq!(
+            from_dmatrix(&m).to_vec::<f64>().unwrap(),
+            vec![1.0, 2.0, 3.0, 4.0]
+        );
     }
 }

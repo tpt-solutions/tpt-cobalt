@@ -64,10 +64,7 @@ mod tests {
             assert_eq!(u32_at(block, 0x00), MAGIC_START0);
             assert_eq!(u32_at(block, 0x04), MAGIC_START1);
             assert_eq!(u32_at(block, 0x08), FLAG_FAMILY_ID);
-            assert_eq!(
-                u32_at(block, 0x0C),
-                0x1000_0000 + (seq * DATA_CHUNK) as u32
-            );
+            assert_eq!(u32_at(block, 0x0C), 0x1000_0000 + (seq * DATA_CHUNK) as u32);
             assert_eq!(u32_at(block, 0x14), seq as u32);
             assert_eq!(u32_at(block, 0x18), 2);
             assert_eq!(u32_at(block, 0x1C), UF2_FAMILY_RP2040);
@@ -78,7 +75,11 @@ mod tests {
         // second block carries the 44-byte tail, zero-padded to 256
         assert_eq!(u32_at(&uf2[512..], 0x10), 44);
         assert_eq!(&uf2[512 + 0x20..512 + 0x20 + 44], &image[256..]);
-        assert!(uf2[512 + 0x20 + 44..512 + 0x20 + 256].iter().all(|&b| b == 0));
+        assert!(
+            uf2[512 + 0x20 + 44..512 + 0x20 + 256]
+                .iter()
+                .all(|&b| b == 0)
+        );
     }
 
     #[test]

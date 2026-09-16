@@ -1756,6 +1756,75 @@ dependencies = [
 ]
 
 [[package]]
+name = "feos"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7db777a05d3145e9bba358576db0a6450d319cf7d53c274e21973a3a824386b9"
+dependencies = [
+ "feos-core",
+ "feos-derive",
+ "feos-dft",
+ "indexmap",
+ "itertools 0.15.0",
+ "nalgebra",
+ "ndarray 0.17.2",
+ "num-dual",
+ "num-traits",
+ "petgraph",
+ "quantity",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "feos-core"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "34dffaede15de55d9f3318126b7fdf1d2c930cd3d1f5b3339f20d10acc3db5be"
+dependencies = [
+ "csv",
+ "indexmap",
+ "itertools 0.15.0",
+ "nalgebra",
+ "num-dual",
+ "num-traits",
+ "quantity",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "feos-derive"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eaf87444d4cbb28e1397237b53e6eac98d37cdfa6db5a5110b6663105425420b"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
+]
+
+[[package]]
+name = "feos-dft"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "686657d9defab082313ed4a5469412402d3af726834b41a65cd8bc5556620b72"
+dependencies = [
+ "feos-core",
+ "libm",
+ "nalgebra",
+ "ndarray 0.17.2",
+ "num-dual",
+ "num-traits",
+ "petgraph",
+ "quantity",
+ "rustdct",
+ "rustfft",
+]
+
+[[package]]
 name = "find-msvc-tools"
 version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2688,6 +2757,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "itertools"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8b4baf93f58d4425749ca49a51c50ebab072c5df6994d08fed93541c331481dc"
+dependencies = [
+ "either",
+]
+
+[[package]]
 name = "itoa"
 version = "1.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3531,6 +3609,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "num-dual"
+version = "0.14.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8aee37846e4b13655a154af811e72c5fbd7443a38ee54d7616c71d8684c9293b"
+dependencies = [
+ "approx",
+ "nalgebra",
+ "ndarray 0.17.2",
+ "num-traits",
+ "simba",
+]
+
+[[package]]
 name = "num-integer"
 version = "0.1.47"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4272,6 +4363,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "quantity"
+version = "0.14.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f9bd381e5de017fafd4b50731ab58add9053ceaf576b08766f3a16ecb0154185"
+dependencies = [
+ "document-features",
+ "nalgebra",
+ "ndarray 0.17.2",
+ "num-dual",
+ "num-traits",
+]
+
+[[package]]
 name = "quick-error"
 version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4627,6 +4731,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustdct"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8b61555105d6a9bf98797c063c362a1d24ed8ab0431655e38f1cf51e52089551"
+dependencies = [
+ "rustfft",
+]
+
+[[package]]
 name = "rustfft"
 version = "6.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4823,6 +4936,7 @@ version = "1.0.151"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c841b55ecdae098c80dcae9cf767f6f8a0c2cdb3416bbef72181df4d0fe73f14"
 dependencies = [
+ "indexmap",
  "itoa",
  "memchr 2.8.3",
  "serde",
@@ -7236,6 +7350,47 @@ dependencies = [
 ]
 
 [[package]]
+name = "tpt-sci-cfd-core"
+version = "0.1.0"
+dependencies = [
+ "approx",
+ "thiserror 2.0.20",
+ "tpt-math-linalg 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "tpt-sci-climate"
+version = "0.1.0"
+dependencies = [
+ "approx",
+ "thiserror 2.0.20",
+ "tpt-math-linalg 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tpt-sci-ode 0.1.0",
+]
+
+[[package]]
+name = "tpt-sci-dft-classical"
+version = "0.1.0"
+dependencies = [
+ "approx",
+ "feos",
+ "feos-core",
+ "feos-dft",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "tpt-sci-electrophys"
+version = "0.1.0"
+dependencies = [
+ "approx",
+ "thiserror 2.0.20",
+ "tpt-math-linalg 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tpt-sci-grid",
+ "tpt-sci-ode 0.1.0",
+]
+
+[[package]]
 name = "tpt-sci-grid"
 version = "0.1.0"
 dependencies = [
@@ -7247,6 +7402,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "tpt-sci-hemodynamics"
+version = "0.1.0"
+dependencies = [
+ "approx",
+ "thiserror 2.0.20",
+ "tpt-math-linalg 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tpt-sci-cfd-core",
+ "tpt-sci-ode 0.1.0",
+]
+
+[[package]]
 name = "tpt-sci-image"
 version = "0.1.0"
 dependencies = [
@@ -7255,6 +7421,35 @@ dependencies = [
  "thiserror 2.0.20",
  "tpt-math-linalg 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "tpt-math-signal-fft 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "tpt-sci-kinetics"
+version = "0.1.0"
+dependencies = [
+ "approx",
+ "thiserror 2.0.20",
+ "tpt-sci-ode 0.1.0",
+ "tpt-sci-reaction-network",
+]
+
+[[package]]
+name = "tpt-sci-md"
+version = "0.1.0"
+dependencies = [
+ "approx",
+ "thiserror 2.0.20",
+ "tpt-math-linalg 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "tpt-sci-ocean"
+version = "0.1.0"
+dependencies = [
+ "approx",
+ "thiserror 2.0.20",
+ "tpt-math-linalg 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tpt-sci-cfd-core",
 ]
 
 [[package]]
@@ -7493,6 +7688,15 @@ version = "0.1.0"
 dependencies = [
  "thiserror 2.0.20",
  "tpt-math-linalg 0.1.0",
+]
+
+[[package]]
+name = "tpt-ui-macro"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
 ]
 
 [[package]]

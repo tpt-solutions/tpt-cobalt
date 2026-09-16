@@ -6,7 +6,7 @@
 
 use std::sync::Arc;
 
-use tpt_autograd::{add, mul, sigmoid, sub};
+use tpt_autograd::{mul, sigmoid, sub};
 use tpt_tensor::{AutogradNode, Tensor};
 
 /// ReLU: `max(0, x)`. Custom autograd node (subgradient `1` for `x > 0`, else `0`).
@@ -14,25 +14,25 @@ pub fn relu(a: &Tensor) -> Tensor {
     let v = a.to_vec::<f64>().unwrap();
     let out: Vec<f64> = v.iter().map(|x| if *x > 0.0 { *x } else { 0.0 }).collect();
     let mut result = Tensor::from_typed(out.clone()).reshape(a.shape()).unwrap();
-    if a.requires_grad() {
-        if let Some(node) = a.node() {
-            let shape = a.shape().to_vec();
-            let out2 = out.clone();
-            let parent = node.clone();
-            let a_node = AutogradNode::new(
-                vec![node],
-                Box::new(move |g: &Tensor| {
-                    let gv = g.to_vec::<f64>().unwrap();
-                    let grad: Vec<f64> = gv
-                        .iter()
-                        .zip(&out2)
-                        .map(|(x, y)| if *y > 0.0 { *x } else { 0.0 })
-                        .collect();
-                    parent.accumulate_grad(&Tensor::from_typed(grad).reshape(&shape).unwrap());
-                }),
-            );
-            result.set_node(Arc::new(a_node));
-        }
+    if a.requires_grad()
+        && let Some(node) = a.node()
+    {
+        let shape = a.shape().to_vec();
+        let out2 = out.clone();
+        let parent = node.clone();
+        let a_node = AutogradNode::new(
+            vec![node],
+            Box::new(move |g: &Tensor| {
+                let gv = g.to_vec::<f64>().unwrap();
+                let grad: Vec<f64> = gv
+                    .iter()
+                    .zip(&out2)
+                    .map(|(x, y)| if *y > 0.0 { *x } else { 0.0 })
+                    .collect();
+                parent.accumulate_grad(&Tensor::from_typed(grad).reshape(&shape).unwrap());
+            }),
+        );
+        result.set_node(Arc::new(a_node));
     }
     result
 }
@@ -52,27 +52,26 @@ pub fn tanh(a: &Tensor) -> Tensor {
     let v = a.to_vec::<f64>().unwrap();
     let out: Vec<f64> = v.iter().map(|x| x.tanh()).collect();
     let mut result = Tensor::from_typed(out.clone()).reshape(a.shape()).unwrap();
-    if a.requires_grad() {
-        if let Some(node) = a.node() {
-            let shape = a.shape().to_vec();
-            let dev = a.device();
-            let parent = node.clone();
-            let cell: Arc<std::sync::Mutex<Option<Tensor>>> =
-                Arc::new(std::sync::Mutex::new(None));
-            let cell2 = cell.clone();
-            let a_node = AutogradNode::new(
-                vec![node],
-                Box::new(move |g: &Tensor| {
-                    let out_t = cell2.lock().unwrap().as_ref().unwrap().clone();
-                    // d tanh/dx = 1 - tanh² = (1 - out)(1 + out)
-                    let one_minus = sub(&Tensor::ones(&shape, dev), &out_t);
-                    let one_plus = tpt_autograd::add(&out_t, &Tensor::ones(&shape, dev));
-                    parent.accumulate_grad(&mul(&mul(g, &one_minus), &one_plus));
-                }),
-            );
-            result.set_node(Arc::new(a_node));
-            *cell.lock().unwrap() = Some(result.clone());
-        }
+    if a.requires_grad()
+        && let Some(node) = a.node()
+    {
+        let shape = a.shape().to_vec();
+        let dev = a.device();
+        let parent = node.clone();
+        let cell: Arc<std::sync::Mutex<Option<Tensor>>> = Arc::new(std::sync::Mutex::new(None));
+        let cell2 = cell.clone();
+        let a_node = AutogradNode::new(
+            vec![node],
+            Box::new(move |g: &Tensor| {
+                let out_t = cell2.lock().unwrap().as_ref().unwrap().clone();
+                // d tanh/dx = 1 - tanh² = (1 - out)(1 + out)
+                let one_minus = sub(&Tensor::ones(&shape, dev), &out_t);
+                let one_plus = tpt_autograd::add(&out_t, &Tensor::ones(&shape, dev));
+                parent.accumulate_grad(&mul(&mul(g, &one_minus), &one_plus));
+            }),
+        );
+        result.set_node(Arc::new(a_node));
+        *cell.lock().unwrap() = Some(result.clone());
     }
     result
 }
@@ -94,7 +93,10 @@ mod tests {
         let y = relu(&x);
         assert_eq!(y.to_vec::<f64>().unwrap(), vec![0.0, 0.0, 3.0]);
         backward(&y);
-        assert_eq!(x.grad().unwrap().to_vec::<f64>().unwrap(), vec![0.0, 0.0, 1.0]);
+        assert_eq!(
+            x.grad().unwrap().to_vec::<f64>().unwrap(),
+            vec![0.0, 0.0, 1.0]
+        );
     }
 
     #[test]

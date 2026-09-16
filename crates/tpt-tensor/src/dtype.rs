@@ -138,7 +138,10 @@ impl Num for bool {
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum DTypeError {
     #[error("dtype mismatch: expected {expected}, found {found}")]
-    Mismatch { expected: &'static str, found: &'static str },
+    Mismatch {
+        expected: &'static str,
+        found: &'static str,
+    },
     #[error("shape mismatch: tensor holds {given} elements but target needs {need}")]
     ShapeMismatch { given: usize, need: usize },
     #[error("unsupported dtype for this operation: {0}")]

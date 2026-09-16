@@ -96,6 +96,9 @@ mod tests {
         let y1 = solve_ivp(&f, &y0, 0.0, 1.0, 30);
         backward(&y1);
         let g = y0.grad().unwrap().to_vec::<f64>().unwrap()[0];
-        assert!((g - (2.0_f64 * 1.0_f64.exp()) / 2.0).abs() < 1e-3, "dy(T)/dy0 should be e^1 ~ {g}");
+        assert!(
+            (g - (2.0_f64 * 1.0_f64.exp()) / 2.0).abs() < 1e-3,
+            "dy(T)/dy0 should be e^1 ~ {g}"
+        );
     }
 }

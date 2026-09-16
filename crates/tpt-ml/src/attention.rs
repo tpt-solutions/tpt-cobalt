@@ -53,15 +53,17 @@ fn linear_3d(x: &Tensor, w: &Tensor, bias: Option<&Tensor>) -> Tensor {
     }
     let result = Tensor::from_typed(out).reshape(&[b, t, o]).unwrap();
 
-    let needs = x.requires_grad() || w.requires_grad() || bias.map_or(false, |b| b.requires_grad());
+    let needs = x.requires_grad() || w.requires_grad() || bias.is_some_and(|b| b.requires_grad());
     if !needs {
         return result;
     }
     let x_node = x.node();
     let w_node = w.node();
     let b_node = bias.and_then(|b| b.node());
-    let parents: Vec<Arc<AutogradNode>> =
-        [x_node.clone(), w_node.clone(), b_node.clone()].into_iter().flatten().collect();
+    let parents: Vec<Arc<AutogradNode>> = [x_node.clone(), w_node.clone(), b_node.clone()]
+        .into_iter()
+        .flatten()
+        .collect();
     let xv2 = xv;
     let wv2 = wv;
     custom_vjp(result, parents, move |grad: &Tensor| {
@@ -121,8 +123,7 @@ fn split_heads(x: &Tensor, h: usize) -> Tensor {
         for hh in 0..h {
             for tt in 0..t {
                 for dd in 0..dh {
-                    out[((bb * h + hh) * t + tt) * dh + dd] =
-                        v[(bb * t + tt) * d + hh * dh + dd];
+                    out[((bb * h + hh) * t + tt) * dh + dd] = v[(bb * t + tt) * d + hh * dh + dd];
                 }
             }
         }
@@ -164,8 +165,7 @@ fn merge_heads(x: &Tensor, h: usize) -> Tensor {
         for hh in 0..h {
             for tt in 0..t {
                 for dd in 0..dh {
-                    out[(bb * t + tt) * d + hh * dh + dd] =
-                        v[((bb * h + hh) * t + tt) * dh + dd];
+                    out[(bb * t + tt) * d + hh * dh + dd] = v[((bb * h + hh) * t + tt) * dh + dd];
                 }
             }
         }
@@ -244,7 +244,10 @@ pub struct MultiHeadAttention {
 impl MultiHeadAttention {
     /// Xavier-ish deterministic init (same LCG scheme as `Linear`).
     pub fn new(d_model: usize, heads: usize) -> Self {
-        assert!(d_model % heads == 0, "d_model must divide by heads");
+        assert!(
+            d_model.is_multiple_of(heads),
+            "d_model must divide by heads"
+        );
         let mk = |seed: u64| {
             let mut state = seed;
             let mut rng = || {
@@ -307,7 +310,12 @@ impl Module for MultiHeadAttention {
     }
 
     fn parameters(&self) -> Vec<Tensor> {
-        vec![self.wq.clone(), self.wk.clone(), self.wv.clone(), self.wo.clone()]
+        vec![
+            self.wq.clone(),
+            self.wk.clone(),
+            self.wv.clone(),
+            self.wo.clone(),
+        ]
     }
 
     fn set_parameters(&mut self, params: Vec<Tensor>) {
@@ -355,11 +363,7 @@ impl TransformerBlock {
         // FFN (tanh activation keeps everything differentiable on the tape).
         // Uses the 3-D-native batched projection; `Linear` stores its weight
         // as [in, out], exactly the layout `linear_3d` expects.
-        let h = crate::activations::tanh(&linear_3d(
-            &n1,
-            &self.f1.weight,
-            self.f1.bias.as_ref(),
-        ));
+        let h = crate::activations::tanh(&linear_3d(&n1, &self.f1.weight, self.f1.bias.as_ref()));
         let ff = linear_3d(&h, &self.f2.weight, self.f2.bias.as_ref());
 
         // residual + norm
@@ -411,7 +415,10 @@ mod tests {
         // H=1, D=2. Wq = Wk = 0 -> scores all equal -> softmax uniform.
         // Wv = I, Wo = I -> out[t] = mean over t' of x[t'].
         let mut mha = MultiHeadAttention::new(2, 1);
-        let zero = Tensor::from_typed(vec![0.0_f64; 4]).reshape(&[2, 2]).unwrap().with_autograd();
+        let zero = Tensor::from_typed(vec![0.0_f64; 4])
+            .reshape(&[2, 2])
+            .unwrap()
+            .with_autograd();
         let eye = Tensor::from_typed(vec![1.0_f64, 0.0, 0.0, 1.0])
             .reshape(&[2, 2])
             .unwrap()
@@ -439,7 +446,9 @@ mod tests {
     fn mha_multihead_shape_and_grads() {
         let mha = MultiHeadAttention::new(4, 2);
         let x = Tensor::from_typed(
-            (0..2 * 3 * 4).map(|i| (i as f64 * 0.125) - 1.5).collect::<Vec<f64>>(),
+            (0..2 * 3 * 4)
+                .map(|i| (i as f64 * 0.125) - 1.5)
+                .collect::<Vec<f64>>(),
         )
         .reshape(&[2, 3, 4])
         .unwrap()
@@ -449,7 +458,12 @@ mod tests {
 
         let loss = tpt_autograd::mean(&y);
         backward(&loss);
-        for (name, w) in [("wq", &mha.wq), ("wk", &mha.wk), ("wv", &mha.wv), ("wo", &mha.wo)] {
+        for (name, w) in [
+            ("wq", &mha.wq),
+            ("wk", &mha.wk),
+            ("wv", &mha.wv),
+            ("wo", &mha.wo),
+        ] {
             let g = w.grad().expect(name).to_vec::<f64>().unwrap();
             assert!(g.iter().all(|v| v.is_finite()), "{name} grad not finite");
             assert!(g.iter().any(|v| *v != 0.0), "{name} grad all zero");
@@ -481,22 +495,22 @@ mod tests {
         let wv = mha.wv.to_vec::<f64>().unwrap();
         let mut plus = mha.parameters();
         plus[2] = Tensor::from_typed({
-                let mut v = wv.clone();
-                v[0] += eps;
-                v
-            })
-            .reshape(&[2, 2])
-            .unwrap()
-            .with_autograd();
+            let mut v = wv.clone();
+            v[0] += eps;
+            v
+        })
+        .reshape(&[2, 2])
+        .unwrap()
+        .with_autograd();
         let mut minus = mha.parameters();
         minus[2] = Tensor::from_typed({
-                let mut v = wv.clone();
-                v[0] -= eps;
-                v
-            })
-            .reshape(&[2, 2])
-            .unwrap()
-            .with_autograd();
+            let mut v = wv.clone();
+            v[0] -= eps;
+            v
+        })
+        .reshape(&[2, 2])
+        .unwrap()
+        .with_autograd();
         let mut mha_p = MultiHeadAttention::new(2, 1);
         mha_p.set_parameters(plus);
         let mut mha_m = MultiHeadAttention::new(2, 1);
@@ -513,7 +527,9 @@ mod tests {
     fn transformer_block_shape_grads_and_training() {
         let mut block = TransformerBlock::new(4, 2, 8);
         let x = Tensor::from_typed(
-            (0..2 * 3 * 4).map(|i| (i as f64 * 0.2) - 1.2).collect::<Vec<f64>>(),
+            (0..2 * 3 * 4)
+                .map(|i| (i as f64 * 0.2) - 1.2)
+                .collect::<Vec<f64>>(),
         )
         .reshape(&[2, 3, 4])
         .unwrap();

@@ -12,7 +12,7 @@ use std::sync::{Arc, Mutex};
 use tpt_tensor::Tensor;
 
 use crate::env::Environment;
-use crate::ops::{value_add, value_div, value_eq, value_mul, value_sub, LangError};
+use crate::ops::{LangError, value_add, value_div, value_eq, value_mul, value_sub};
 use crate::value::{Function, Truthiness, Value};
 
 /// A runtime error: Python-style kind plus message.
@@ -79,16 +79,19 @@ pub fn lex(src: &str) -> Res<Vec<Tok>> {
             c if c.is_ascii_digit() => {
                 let start = i;
                 let mut dot = false;
-                while i < cs.len() && (cs[i].is_ascii_digit() || (cs[i] == '.' && !dot)) {
+                while i < cs.len()
+                    && (cs[i].is_ascii_digit()
+                        || (cs[i] == '.' && !dot && cs.get(i + 1) != Some(&'.')))
+                {
                     if cs[i] == '.' {
                         dot = true;
                     }
                     i += 1;
                 }
                 let s: String = cs[start..i].iter().collect();
-                let n: f64 = s
-                    .parse()
-                    .map_err(|_| InterpreterError::new("SyntaxError", format!("bad number `{s}`")))?;
+                let n: f64 = s.parse().map_err(|_| {
+                    InterpreterError::new("SyntaxError", format!("bad number `{s}`"))
+                })?;
                 // optional physical-unit suffix: either attached (`3.0m`) or
                 // space-separated (`3.0 m/s^2`)
                 let mut j = i;
@@ -141,6 +144,10 @@ pub fn lex(src: &str) -> Res<Vec<Tok>> {
                 out.push(Tok::Op(c.to_string()));
                 i += 1;
             }
+            '.' if cs.get(i + 1) == Some(&'.') => {
+                out.push(Tok::Op("..".into()));
+                i += 2;
+            }
             '{' | '}' | ',' | ':' | '.' => {
                 out.push(Tok::Op(c.to_string()));
                 i += 1;
@@ -159,7 +166,7 @@ pub fn lex(src: &str) -> Res<Vec<Tok>> {
                 return Err(InterpreterError::new(
                     "SyntaxError",
                     format!("unexpected character '{other}'"),
-                ))
+                ));
             }
         }
     }
@@ -185,10 +192,25 @@ pub enum Expr {
     Dict(Vec<(String, Expr)>),
     Unary(String, Box<Expr>),
     Binary(String, Box<Expr>, Box<Expr>),
-    Call(Box<Expr>, Vec<Expr>),
-    Index(Box<Expr>, Box<Expr>),
+    Call(Box<Expr>, Vec<CallArg>),
+    Index(Box<Expr>, Vec<IdxArg>),
     /// Attribute access `base.name`: module members (and dict keys as sugar).
     Member(Box<Expr>, String),
+}
+
+/// One argument in a call: positional, or `name = expr` keyword.
+#[derive(Debug, Clone)]
+pub struct CallArg {
+    pub name: Option<String>,
+    pub expr: Expr,
+}
+
+/// One bracket index: a plain expression, or an `a:b` slice (either side
+/// optional).
+#[derive(Debug, Clone)]
+pub enum IdxArg {
+    Expr(Expr),
+    Range(Option<Expr>, Option<Expr>),
 }
 
 /// A parameter declaration in a `def`: name plus optional default expression
@@ -214,6 +236,10 @@ pub enum Stmt {
     /// `module Name { ... }`: execute the body in a child scope, then bind
     /// its bindings as a [`crate::value::Module`] under `Name`.
     Module(String, Vec<Stmt>),
+    /// `for name in iterable { body }`. Iterates lists, tensors (flat),
+    /// strings (chars), and dicts (sorted keys). The loop variable is bound
+    /// in the current scope (Python-like).
+    For(String, Expr, Vec<Stmt>),
     Return(Option<Expr>),
     Expr(Expr),
 }
@@ -251,7 +277,10 @@ impl<'t> Parser<'t> {
 
     fn expect_op(&mut self, op: &str) -> Res<()> {
         if !self.eat_op(op)? {
-            return Err(InterpreterError::new("SyntaxError", format!("expected '{op}'")));
+            return Err(InterpreterError::new(
+                "SyntaxError",
+                format!("expected '{op}'"),
+            ));
         }
         Ok(())
     }
@@ -314,11 +343,8 @@ impl<'t> Parser<'t> {
                     self.expect_op("}")?;
                     let mut else_body = Vec::new();
                     self.skip_newlines();
-                    if self.at_kw("else") {
-                        self.pos += 1;
-                        self.expect_op("{")?;
-                        else_body = self.parse_block()?;
-                        self.expect_op("}")?;
+                    if self.at_kw("else") || self.at_kw("elif") {
+                        else_body = self.parse_tail_else()?;
                     }
                     Ok(Stmt::If(cond, then_body, else_body))
                 }
@@ -329,6 +355,36 @@ impl<'t> Parser<'t> {
                     let body = self.parse_block()?;
                     self.expect_op("}")?;
                     Ok(Stmt::While(cond, body))
+                }
+                "for" => {
+                    self.pos += 1;
+                    let name = self.expect_ident()?;
+                    if !self.at_kw("in") {
+                        return Err(InterpreterError::new(
+                            "SyntaxError",
+                            "expected 'in' in for loop",
+                        ));
+                    }
+                    self.pos += 1;
+                    let iterable = self.parse_expr()?;
+                    self.expect_op("{")?;
+                    let body = self.parse_block()?;
+                    self.expect_op("}")?;
+                    Ok(Stmt::For(name, iterable, body))
+                }
+                "elif" => {
+                    // `elif` desugars to a nested if in the else branch
+                    self.pos += 1;
+                    let cond = self.parse_expr()?;
+                    self.expect_op("{")?;
+                    let then_body = self.parse_block()?;
+                    self.expect_op("}")?;
+                    let mut else_body = Vec::new();
+                    self.skip_newlines();
+                    if self.at_kw("else") || self.at_kw("elif") {
+                        else_body = self.parse_tail_else()?;
+                    }
+                    Ok(Stmt::If(cond, then_body, else_body))
                 }
                 "def" | "fn" => {
                     self.pos += 1;
@@ -350,7 +406,10 @@ impl<'t> Parser<'t> {
                                 ),
                             ));
                         }
-                        params.push(ParamDecl { name: pname, default });
+                        params.push(ParamDecl {
+                            name: pname,
+                            default,
+                        });
                         if !self.eat_op(",")? {
                             break;
                         }
@@ -384,6 +443,23 @@ impl<'t> Parser<'t> {
         }
     }
 
+    /// The `else { ... }` / `else if ...` / `elif ...` tail of an if.
+    fn parse_tail_else(&mut self) -> Res<Vec<Stmt>> {
+        if self.at_kw("elif") || self.peek_is_ident("if") {
+            // recurse: the tail is itself an if-statement
+            return Ok(vec![self.parse_stmt()?]);
+        }
+        self.pos += 1; // 'else'
+        self.expect_op("{")?;
+        let body = self.parse_block()?;
+        self.expect_op("}")?;
+        Ok(body)
+    }
+
+    fn peek_is_ident(&self, kw: &str) -> bool {
+        matches!(self.peek(), Some(Tok::Ident(s)) if s == kw)
+    }
+
     fn parse_assign_or_expr(&mut self) -> Res<Stmt> {
         // lookahead: IDENT '=' expr (but not '=='), and IDENT '.' IDENT '='
         // for module member assignment
@@ -396,21 +472,41 @@ impl<'t> Parser<'t> {
                     return Ok(Stmt::Assign(name, e));
                 }
                 Some(Tok::Op(op)) if op == "." => {
-                    if let Some(Tok::Ident(_)) = self.toks.get(self.pos + 2) {
-                        if let Some(Tok::Op(eq)) = self.toks.get(self.pos + 3) {
-                            if eq == "=" {
-                                let base = self.expect_ident()?;
-                                self.pos += 1; // '.'
-                                let member = self.expect_ident()?;
-                                self.pos += 1; // '='
-                                let e = self.parse_expr()?;
-                                return Ok(Stmt::MemberAssign(
-                                    Box::new(Expr::Ident(base)),
-                                    member,
-                                    e,
-                                ));
-                            }
+                    // IDENT ('.' IDENT)* '.' IDENT '=' → member(-chain)
+                    // assignment. Pure lookahead: nothing is consumed unless
+                    // the full pattern matches (member *access* falls through).
+                    let mut segs: Vec<String> = Vec::new();
+                    let mut j = self.pos;
+                    while matches!(self.toks.get(j), Some(Tok::Ident(_)))
+                        && matches!(self.toks.get(j + 1), Some(Tok::Op(o)) if o == ".")
+                    {
+                        segs.push(match self.toks.get(j).cloned() {
+                            Some(Tok::Ident(s)) => s,
+                            _ => unreachable!(),
+                        });
+                        j += 2;
+                    }
+                    let is_assign = matches!(self.toks.get(j), Some(Tok::Ident(_)))
+                        && matches!(self.toks.get(j + 1), Some(Tok::Op(o)) if o == "=");
+                    if is_assign {
+                        segs.push(match self.toks.get(j).cloned() {
+                            Some(Tok::Ident(s)) => s,
+                            _ => unreachable!(),
+                        });
+                        j += 1; // at '='
+                    }
+                    if is_assign && segs.len() >= 2 {
+                        let mut base = Expr::Ident(segs[0].clone());
+                        for seg in &segs[1..segs.len() - 1] {
+                            base = Expr::Member(Box::new(base), seg.clone());
                         }
+                        self.pos = j + 1; // past '='
+                        let e = self.parse_expr()?;
+                        return Ok(Stmt::MemberAssign(
+                            Box::new(base),
+                            segs.last().unwrap().clone(),
+                            e,
+                        ));
                     }
                 }
                 _ => {}
@@ -420,7 +516,13 @@ impl<'t> Parser<'t> {
     }
 
     pub fn parse_expr(&mut self) -> Res<Expr> {
-        self.parse_comparison()
+        let lhs = self.parse_comparison()?;
+        if self.at_op("..") {
+            self.pos += 1;
+            let rhs = self.parse_comparison()?;
+            return Ok(Expr::Binary("..".into(), Box::new(lhs), Box::new(rhs)));
+        }
+        Ok(lhs)
     }
 
     fn parse_comparison(&mut self) -> Res<Expr> {
@@ -488,14 +590,35 @@ impl<'t> Parser<'t> {
                 e = Expr::Member(Box::new(e), name);
             } else if self.at_op("[") {
                 self.pos += 1;
-                let idx = self.parse_expr()?;
+                let mut args = Vec::new();
+                while !self.at_op("]") {
+                    args.push(self.parse_idx_arg()?);
+                    if !self.eat_op(",")? {
+                        break;
+                    }
+                }
                 self.expect_op("]")?;
-                e = Expr::Index(Box::new(e), Box::new(idx));
+                e = Expr::Index(Box::new(e), args);
             } else if self.at_op("(") {
                 self.pos += 1;
                 let mut args = Vec::new();
                 while !self.at_op(")") {
-                    args.push(self.parse_expr()?);
+                    let arg = if matches!(self.peek(), Some(Tok::Ident(_)))
+                        && matches!(self.toks.get(self.pos + 1), Some(Tok::Op(o)) if o == "=")
+                    {
+                        let name = self.expect_ident()?;
+                        self.pos += 1; // '='
+                        CallArg {
+                            name: Some(name),
+                            expr: self.parse_expr()?,
+                        }
+                    } else {
+                        CallArg {
+                            name: None,
+                            expr: self.parse_expr()?,
+                        }
+                    };
+                    args.push(arg);
                     if !self.eat_op(",")? {
                         break;
                     }
@@ -507,6 +630,25 @@ impl<'t> Parser<'t> {
             }
         }
         Ok(e)
+    }
+
+    /// One bracket index: `expr`, `expr? : expr?` (slice), with the slice
+    /// form recognized by a leading ':' or a ':' after the first expression.
+    fn parse_idx_arg(&mut self) -> Res<IdxArg> {
+        let mut start = None;
+        if !self.at_op(":") {
+            start = Some(self.parse_expr()?);
+        }
+        if !self.at_op(":") {
+            let start = start.ok_or_else(|| InterpreterError::new("SyntaxError", "empty index"))?;
+            return Ok(IdxArg::Expr(start));
+        }
+        self.pos += 1; // ':'
+        let mut end = None;
+        if !self.at_op("]") && !self.at_op(",") {
+            end = Some(self.parse_expr()?);
+        }
+        Ok(IdxArg::Range(start, end))
     }
 
     fn parse_atom(&mut self) -> Res<Expr> {
@@ -569,7 +711,7 @@ impl<'t> Parser<'t> {
                             return Err(InterpreterError::new(
                                 "SyntaxError",
                                 format!("dict key must be a string, got {other:?}"),
-                            ))
+                            ));
                         }
                     };
                     self.pos += 1;
@@ -840,6 +982,30 @@ impl Interpreter {
         });
         self.register_native("ones", |args| filled_from_shape(args, 1.0));
         self.register_native("zeros", |args| filled_from_shape(args, 0.0));
+        self.register_native("upper", |args| match args.first() {
+            Some(Value::Str(s)) => Ok(Value::Str(s.to_uppercase())),
+            _ => Err("upper() requires a string".into()),
+        });
+        self.register_native("lower", |args| match args.first() {
+            Some(Value::Str(s)) => Ok(Value::Str(s.to_lowercase())),
+            _ => Err("lower() requires a string".into()),
+        });
+        self.register_native("trim", |args| match args.first() {
+            Some(Value::Str(s)) => Ok(Value::Str(s.trim().to_string())),
+            _ => Err("trim() requires a string".into()),
+        });
+        self.register_native("contains", |args| match (args.first(), args.get(1)) {
+            (Some(Value::Str(h)), Some(Value::Str(n))) => Ok(Value::Bool(h.contains(n.as_str()))),
+            _ => Err("contains(haystack, needle) requires two strings".into()),
+        });
+        self.register_native("split", |args| match (args.first(), args.get(1)) {
+            (Some(Value::Str(s)), Some(Value::Str(sep))) => Ok(Value::List(Arc::new(Mutex::new(
+                s.split(sep.as_str())
+                    .map(|p| Value::Str(p.to_string()))
+                    .collect(),
+            )))),
+            _ => Err("split(s, sep) requires two strings".into()),
+        });
         self.register_native("str", |args| {
             args.first()
                 .map(|v| Value::Str(format!("{v}")))
@@ -974,7 +1140,7 @@ impl Interpreter {
                 return Err(InterpreterError::new(
                     "KeyboardInterrupt",
                     "aborted by debugger",
-                ))
+                ));
             }
         }
         Ok(())
@@ -1045,7 +1211,13 @@ impl Interpreter {
             }
             Stmt::Print(e) => {
                 let v = self.eval(e, env, dbg)?;
-                self.out.push_str(&format!("{v}\n"));
+                match &v {
+                    Value::Str(s) if s.contains('{') => {
+                        let rendered = self.interpolate(s, env, dbg)?;
+                        self.out.push_str(&format!("{rendered}\n"));
+                    }
+                    _ => self.out.push_str(&format!("{v}\n")),
+                }
                 Ok(Flow::Normal)
             }
             Stmt::Assert(e) => {
@@ -1088,7 +1260,8 @@ impl Interpreter {
                 }
                 let id = self.next_fn_id;
                 self.next_fn_id += 1;
-                self.script_bodies.insert(id, (params.clone(), body.clone()));
+                self.script_bodies
+                    .insert(id, (params.clone(), body.clone()));
                 env.define(
                     name.clone(),
                     Value::Function(Arc::new(Function::Script {
@@ -1098,6 +1271,38 @@ impl Interpreter {
                         env: Arc::clone(env),
                     })),
                 );
+                Ok(Flow::Normal)
+            }
+            Stmt::For(name, iterable, body) => {
+                let it = self.eval(iterable, env, dbg)?;
+                let items: Vec<Value> = match it {
+                    Value::List(l) => l.lock().unwrap().clone(),
+                    Value::Tensor(t) => t
+                        .to_vec::<f64>()
+                        .unwrap()
+                        .into_iter()
+                        .map(Value::Num)
+                        .collect(),
+                    Value::Str(s) => s.chars().map(|c| Value::Str(c.to_string())).collect(),
+                    Value::Dict(d) => {
+                        let mut keys: Vec<String> = d.lock().unwrap().keys().cloned().collect();
+                        keys.sort(); // deterministic (HashMap order is not)
+                        keys.into_iter().map(Value::Str).collect()
+                    }
+                    other => {
+                        return Err(InterpreterError::new(
+                            "TypeError",
+                            format!("{} is not iterable in for", other.type_name()),
+                        ));
+                    }
+                };
+                for item in items {
+                    env.define(name.clone(), item);
+                    match self.exec_block(body, env, dbg)? {
+                        Flow::Normal => {}
+                        r @ Flow::Return(_) => return Ok(r),
+                    }
+                }
                 Ok(Flow::Normal)
             }
             Stmt::Module(name, body) => {
@@ -1113,6 +1318,10 @@ impl Interpreter {
                 match b {
                     Value::Module(m) => {
                         m.set(name.clone(), v);
+                        Ok(Flow::Normal)
+                    }
+                    Value::Dict(d) => {
+                        d.lock().unwrap().insert(name.clone(), v);
                         Ok(Flow::Normal)
                     }
                     other => Err(InterpreterError::new(
@@ -1135,12 +1344,7 @@ impl Interpreter {
         }
     }
 
-    fn eval(
-        &mut self,
-        e: &Expr,
-        env: &Arc<Environment>,
-        dbg: &mut Option<DbgCb>,
-    ) -> Res<Value> {
+    fn eval(&mut self, e: &Expr, env: &Arc<Environment>, dbg: &mut Option<DbgCb>) -> Res<Value> {
         match e {
             Expr::UnitNum(x, dim) => Ok(Value::Unit(Arc::new(crate::value::UnitValue {
                 value: *x,
@@ -1188,20 +1392,63 @@ impl Interpreter {
             Expr::Binary(op, lhs, rhs) => {
                 let l = self.eval(lhs, env, dbg)?;
                 let r = self.eval(rhs, env, dbg)?;
+                if op == ".." {
+                    let (Some(a), Some(b)) = (l.as_num(), r.as_num()) else {
+                        return Err(InterpreterError::new(
+                            "TypeError",
+                            "range '..' requires number endpoints",
+                        ));
+                    };
+                    let (a, b) = (a as i64, b as i64);
+                    return Ok(Value::List(Arc::new(Mutex::new(
+                        (a..b).map(|x| Value::Num(x as f64)).collect(),
+                    ))));
+                }
                 apply_binary(op, &l, &r)
             }
             Expr::Call(fexpr, args) => {
                 let f = self.eval(fexpr, env, dbg)?;
                 let mut vals = Vec::with_capacity(args.len());
                 for a in args {
-                    vals.push(self.eval(a, env, dbg)?);
+                    let v = self.eval(&a.expr, env, dbg)?;
+                    vals.push((a.name.clone(), v));
                 }
                 call_function(self, &f, &vals, dbg)
             }
-            Expr::Index(base, idx) => {
+            Expr::Index(base, idx_args) => {
                 let b = self.eval(base, env, dbg)?;
-                let i = self.eval(idx, env, dbg)?;
-                index_value(&b, &i)
+                let mut idx = Vec::with_capacity(idx_args.len());
+                for arg in idx_args {
+                    match arg {
+                        IdxArg::Expr(e) => idx.push(IndexArg::Value(self.eval(e, env, dbg)?)),
+                        IdxArg::Range(start, end) => {
+                            let s = match start {
+                                Some(e) => {
+                                    Some(self.eval(e, env, dbg)?.as_num().ok_or_else(|| {
+                                        InterpreterError::new(
+                                            "TypeError",
+                                            "slice bounds must be numbers",
+                                        )
+                                    })? as i64)
+                                }
+                                None => None,
+                            };
+                            let e2 = match end {
+                                Some(e) => {
+                                    Some(self.eval(e, env, dbg)?.as_num().ok_or_else(|| {
+                                        InterpreterError::new(
+                                            "TypeError",
+                                            "slice bounds must be numbers",
+                                        )
+                                    })? as i64)
+                                }
+                                None => None,
+                            };
+                            idx.push(IndexArg::Slice(s, e2));
+                        }
+                    }
+                }
+                index_value(&b, &idx)
             }
             Expr::Member(base, name) => {
                 let b = self.eval(base, env, dbg)?;
@@ -1235,7 +1482,10 @@ fn apply_binary(op: &str, l: &Value, r: &Value) -> Res<Value> {
         let (b, db) = unit_parts(r).ok_or_else(|| type_err(op, r))?;
         let (value, dim) = crate::interp::unit_binop(op, a, &da, b, &db)
             .map_err(|m| InterpreterError::new("UnitError", m))?;
-        return Ok(Value::Unit(Arc::new(crate::value::UnitValue { value, dim })));
+        return Ok(Value::Unit(Arc::new(crate::value::UnitValue {
+            value,
+            dim,
+        })));
     }
     match op {
         "+" => value_add(l, r).map_err(InterpreterError::from_lang),
@@ -1243,8 +1493,13 @@ fn apply_binary(op: &str, l: &Value, r: &Value) -> Res<Value> {
         "*" => value_mul(l, r).map_err(InterpreterError::from_lang),
         "/" => value_div(l, r).map_err(InterpreterError::from_lang),
         "%" => match (l.as_num(), r.as_num()) {
-            (Some(a), Some(b)) if b != 0.0 => Ok(Value::Num(a % b)),
-            (_, Some(b)) if b == 0.0 => Err(InterpreterError::from_lang(LangError::DivByZero)),
+            (Some(a), Some(b)) => {
+                if b == 0.0 {
+                    Err(InterpreterError::from_lang(LangError::DivByZero))
+                } else {
+                    Ok(Value::Num(a % b))
+                }
+            }
             _ => Err(type_err(op, l)),
         },
         "==" => Ok(value_eq(l, r)),
@@ -1303,6 +1558,7 @@ fn stmt_label(s: &Stmt) -> String {
         Stmt::While(..) => "while".into(),
         Stmt::Def(n, _, _) => format!("def {n}"),
         Stmt::Module(n, _) => format!("module {n}"),
+        Stmt::For(n, _, _) => format!("for {n}"),
         Stmt::Return(_) => "return".into(),
         Stmt::Expr(e) => match e {
             Expr::Call(f, _) => match f.as_ref() {
@@ -1331,46 +1587,173 @@ fn json_string(s: &str) -> String {
     out
 }
 
-fn index_value(base: &Value, idx: &Value) -> Res<Value> {
-    fn norm(i: f64, len: usize) -> Res<usize> {
-        let i = i as i64;
-        let i = if i < 0 { (len as i64 + i) as usize } else { i as usize };
-        if i >= len {
-            return Err(InterpreterError::new(
-                "IndexError",
-                format!("index {i} out of range (len {len})"),
-            ));
-        }
-        Ok(i)
+/// An evaluated bracket index: a value (number for tensors/lists, string
+/// for dicts) or an `[a:b]` slice with optional bounds.
+pub enum IndexArg {
+    Value(Value),
+    Slice(Option<i64>, Option<i64>),
+}
+
+fn norm(i: f64, len: usize) -> Res<usize> {
+    let i = i as i64;
+    let i = if i < 0 {
+        (len as i64 + i) as usize
+    } else {
+        i as usize
+    };
+    if i >= len {
+        return Err(InterpreterError::new(
+            "IndexError",
+            format!("index {i} out of range (len {len})"),
+        ));
     }
+    Ok(i)
+}
+
+/// Resolve an optional slice bound against `len` (None -> 0 or len).
+fn slice_bound(v: Option<i64>, len: usize, is_start: bool) -> Res<usize> {
+    match v {
+        None => Ok(if is_start { 0 } else { len }),
+        Some(x) => {
+            let x = if x < 0 { (len as i64 + x).max(0) } else { x };
+            let x = x.min(len as i64) as usize;
+            Ok(x)
+        }
+    }
+}
+
+fn index_value(base: &Value, idx: &[IndexArg]) -> Res<Value> {
     match (base, idx) {
-        (Value::List(l), Value::Num(i)) => {
+        (Value::List(l), [IndexArg::Value(Value::Num(i))]) => {
             let l = l.lock().unwrap();
             let i = norm(*i, l.len())?;
             Ok(l[i].clone())
         }
-        (Value::Dict(d), Value::Str(k)) => d
+        (Value::List(l), [IndexArg::Slice(a, b)]) => {
+            let l = l.lock().unwrap();
+            let s = slice_bound(*a, l.len(), true)?;
+            let e = slice_bound(*b, l.len(), false)?;
+            if s > e {
+                return Err(InterpreterError::new("IndexError", "slice start > end"));
+            }
+            Ok(Value::List(Arc::new(Mutex::new(l[s..e].to_vec()))))
+        }
+        (Value::Dict(d), [IndexArg::Value(Value::Str(k))]) => d
             .lock()
             .unwrap()
             .get(k)
             .cloned()
             .ok_or_else(|| InterpreterError::new("KeyError", format!("key '{k}' not found"))),
-        (Value::Tensor(t), Value::Num(i)) => {
+        (Value::Tensor(t), [IndexArg::Value(Value::Num(i))]) => {
             let v = t.to_vec::<f64>().unwrap();
             let i = norm(*i, v.len())?;
             Ok(Value::Num(v[i]))
         }
+        // multi-index: one number per dimension, row-major offset
+        (Value::Tensor(t), args)
+            if !args.is_empty()
+                && args.len() == t.ndim()
+                && args
+                    .iter()
+                    .all(|a| matches!(a, IndexArg::Value(Value::Num(_)))) =>
+        {
+            let shape = t.shape();
+            let nums: Vec<f64> = args
+                .iter()
+                .map(|a| match a {
+                    IndexArg::Value(Value::Num(n)) => *n,
+                    _ => unreachable!(),
+                })
+                .collect();
+            let mut offset = 0usize;
+            for (d, &n) in nums.iter().enumerate() {
+                let i = norm(n, shape[d])?;
+                offset = offset * shape[d] + i;
+            }
+            let v = t.to_vec::<f64>().unwrap();
+            Ok(Value::Num(v[offset]))
+        }
+        // single slice over the first axis (flat for 1-D tensors)
+        (Value::Tensor(t), [IndexArg::Slice(a, b)]) => {
+            let shape = t.shape();
+            let s = slice_bound(*a, shape[0], true)?;
+            let e = slice_bound(*b, shape[0], false)?;
+            if s > e {
+                return Err(InterpreterError::new("IndexError", "slice start > end"));
+            }
+            let data = t.to_vec::<f64>().unwrap();
+            let row_len: usize = shape[1..].iter().product();
+            let mut out = Vec::new();
+            for row in s..e {
+                out.extend_from_slice(&data[row * row_len..(row + 1) * row_len]);
+            }
+            let mut new_shape = shape.to_vec();
+            new_shape[0] = e - s;
+            Ok(Value::Tensor(
+                Tensor::from_typed(out).reshape(&new_shape).unwrap(),
+            ))
+        }
+        (Value::Str(s), [IndexArg::Value(Value::Num(i))]) => {
+            let chars: Vec<char> = s.chars().collect();
+            let i = norm(*i, chars.len())?;
+            Ok(Value::Str(chars[i].to_string()))
+        }
         (b, _) => Err(InterpreterError::new(
             "TypeError",
-            format!("cannot index {}", b.type_name()),
+            format!("cannot index {} with these arguments", b.type_name()),
         )),
     }
 }
 
+/// Render `{expr}` interpolations in a print string against `env`.
+/// `{{` / `}}` are literal braces.
+impl Interpreter {
+    fn interpolate(
+        &mut self,
+        s: &str,
+        env: &Arc<Environment>,
+        dbg: &mut Option<DbgCb>,
+    ) -> Res<String> {
+        let mut out = String::with_capacity(s.len());
+        let mut chars = s.char_indices().peekable();
+        while let Some((i, c)) = chars.next() {
+            match c {
+                '{' if matches!(chars.peek(), Some((_, '{'))) => {
+                    out.push('{');
+                    chars.next();
+                }
+                '}' if matches!(chars.peek(), Some((_, '}'))) => {
+                    out.push('}');
+                    chars.next();
+                }
+                '{' => {
+                    let close = s[i..].find('}').ok_or_else(|| {
+                        InterpreterError::new("SyntaxError", "unterminated '{' in print string")
+                    })?;
+                    let expr_src: String = s[i + 1..i + close].trim().to_string();
+                    let toks = lex(&expr_src)?;
+                    let mut parser = Parser::new(&toks);
+                    let e = parser.parse_expr()?;
+                    let v = self.eval(&e, env, dbg)?;
+                    out.push_str(&v.to_string());
+                    for _ in 0..close {
+                        chars.next();
+                    }
+                }
+                other => out.push(other),
+            }
+        }
+        Ok(out)
+    }
+}
+
+/// One evaluated call argument: positional or keyword.
+pub type CallVal = (Option<String>, Value);
+
 fn call_function(
     interp: &mut Interpreter,
     f: &Value,
-    args: &[Value],
+    args: &[CallVal],
     dbg: &mut Option<DbgCb>,
 ) -> Res<Value> {
     let Value::Function(fun) = f else {
@@ -1381,25 +1764,65 @@ fn call_function(
     };
     match fun.as_ref() {
         Function::Native { f, .. } => {
-            f(args).map_err(|m| InterpreterError::new("RuntimeError", m))
+            if args.iter().any(|(name, _)| name.is_some()) {
+                return Err(InterpreterError::new(
+                    "TypeError",
+                    "native functions take positional arguments only",
+                ));
+            }
+            let positional: Vec<Value> = args.iter().map(|(_, v)| v.clone()).collect();
+            f(&positional).map_err(|m| InterpreterError::new("RuntimeError", m))
         }
         Function::Script { name, id, env, .. } => {
-            let (params_def, body) = interp
-                .script_bodies
-                .get(id)
-                .cloned()
-                .ok_or_else(|| {
-                    InterpreterError::new("NameError", format!("body of '{name}' missing"))
-                })?;
-            let required = params_def
+            let (params_def, body) = interp.script_bodies.get(id).cloned().ok_or_else(|| {
+                InterpreterError::new("NameError", format!("body of '{name}' missing"))
+            })?;
+            // bind: positionals fill slots left-to-right, keywords target
+            // parameters by name, defaults cover whatever is still missing
+            let mut slots: Vec<Option<Value>> = vec![None; params_def.len()];
+            let mut positional = 0usize;
+            for (cname, v) in args {
+                match cname {
+                    None => {
+                        if positional >= params_def.len() {
+                            return Err(InterpreterError::new(
+                                "TypeError",
+                                format!(
+                                    "{name}() takes at most {} arguments but more were given",
+                                    params_def.len()
+                                ),
+                            ));
+                        }
+                        slots[positional] = Some(v.clone());
+                        positional += 1;
+                    }
+                    Some(cname) => {
+                        let idx = params_def
+                            .iter()
+                            .position(|p| &p.name == cname)
+                            .ok_or_else(|| {
+                                InterpreterError::new(
+                                    "TypeError",
+                                    format!("{name}() has no parameter '{cname}'"),
+                                )
+                            })?;
+                        if slots[idx].is_some() {
+                            return Err(InterpreterError::new(
+                                "TypeError",
+                                format!("{name}() got multiple values for '{cname}'"),
+                            ));
+                        }
+                        slots[idx] = Some(v.clone());
+                    }
+                }
+            }
+            let missing: Vec<String> = params_def
                 .iter()
-                .take_while(|p| p.default.is_none())
-                .count();
-            if args.len() < required {
-                let missing: Vec<String> = params_def[args.len()..required]
-                    .iter()
-                    .map(|p| p.name.clone())
-                    .collect();
+                .zip(&slots)
+                .filter(|(p, s)| s.is_none() && p.default.is_none())
+                .map(|(p, _)| p.name.clone())
+                .collect();
+            if !missing.is_empty() {
                 return Err(InterpreterError::new(
                     "TypeError",
                     format!(
@@ -1409,26 +1832,19 @@ fn call_function(
                     ),
                 ));
             }
-            if args.len() > params_def.len() {
-                return Err(InterpreterError::new(
-                    "TypeError",
-                    format!(
-                        "{name}() takes at most {} arguments but {} were given",
-                        params_def.len(),
-                        args.len()
-                    ),
-                ));
-            }
             // calls evaluate in the *defining* scope (closures: a function
             // defined inside a `module` block sees that module's members)
             let parent = Arc::clone(env);
             let local = Arc::new(Environment::child(&parent));
             interp.call_depth += 1;
-            for (i, p) in params_def.iter().enumerate() {
-                if i < args.len() {
-                    local.define(p.name.clone(), args[i].clone());
-                } else if let Some(dv) = &p.default {
-                    local.define(p.name.clone(), dv.clone());
+            for (p, slot) in params_def.iter().zip(&slots) {
+                match slot {
+                    Some(v) => local.define(p.name.clone(), v.clone()),
+                    None => {
+                        if let Some(dv) = &p.default {
+                            local.define(p.name.clone(), dv.clone());
+                        }
+                    }
                 }
             }
             let result = interp.exec_block(&body, &local, dbg);
@@ -1448,11 +1864,19 @@ fn filled_from_shape(args: &[Value], fill: f64) -> Result<Value, String> {
             .lock()
             .unwrap()
             .iter()
-            .map(|v| v.as_num().map(|x| x as usize).ok_or_else(|| "bad shape".to_string()))
+            .map(|v| {
+                v.as_num()
+                    .map(|x| x as usize)
+                    .ok_or_else(|| "bad shape".to_string())
+            })
             .collect::<Result<_, _>>()?,
         _ => args
             .iter()
-            .map(|v| v.as_num().map(|x| x as usize).ok_or_else(|| "bad shape".to_string()))
+            .map(|v| {
+                v.as_num()
+                    .map(|x| x as usize)
+                    .ok_or_else(|| "bad shape".to_string())
+            })
             .collect::<Result<_, _>>()?,
     };
     let n: usize = shape.iter().product();
@@ -1463,23 +1887,27 @@ fn filled_from_shape(args: &[Value], fill: f64) -> Result<Value, String> {
 
 /// Runtime unit-aware arithmetic helper shared with the static checker's
 /// dimension algebra ([`crate::check::Dim`]).
-pub fn unit_binop(op: &str, a: f64, dim_a: &str, b: f64, dim_b: &str)
--> Result<(f64, String), String> {
+pub fn unit_binop(
+    op: &str,
+    a: f64,
+    dim_a: &str,
+    b: f64,
+    dim_b: &str,
+) -> Result<(f64, String), String> {
     use crate::check::Dim;
     let (da, db) = (Dim::parse(dim_a), Dim::parse(dim_b));
     match op {
         "+" | "-" => {
             if da != db {
-                return Err(format!(
-                    "cannot add/subtract '{}' and '{}'",
-                    da,
-                    db
-                ));
+                return Err(format!("cannot add/subtract '{}' and '{}'", da, db));
             }
-            Ok((match op {
-                "+" => a + b,
-                _ => a - b,
-            }, dim_a.to_string()))
+            Ok((
+                match op {
+                    "+" => a + b,
+                    _ => a - b,
+                },
+                dim_a.to_string(),
+            ))
         }
         "*" => Ok((a * b, Dim::compose(&da, &db, 1).to_string())),
         "/" => {
@@ -1499,7 +1927,10 @@ pub fn unit_binop(op: &str, a: f64, dim_a: &str, b: f64, dim_b: &str)
 pub enum ReplOutcome {
     /// The line was executed; contains the printed output plus the value of
     /// the last expression (if any).
-    Done { output: String, value: Option<Value> },
+    Done {
+        output: String,
+        value: Option<Value>,
+    },
     /// The line opened an unclosed bracket; keep reading with a continuation.
     NeedMore,
     /// A magic command ran; the string is its output.
@@ -1540,6 +1971,9 @@ fn bracket_balance(line: &str) -> i64 {
 pub struct Repl {
     interp: Interpreter,
     pending: String,
+    /// Accumulated source of every successfully fed entry — the static
+    /// `:type`/`:shape` magics analyze this so session variables are known.
+    session: String,
 }
 
 impl Default for Repl {
@@ -1553,6 +1987,7 @@ impl Repl {
         Repl {
             interp: Interpreter::new(),
             pending: String::new(),
+            session: String::new(),
         }
     }
 
@@ -1591,6 +2026,10 @@ impl Repl {
         let src = std::mem::take(&mut self.pending);
         match self.interp.run(&src) {
             Ok(value) => {
+                if !self.session.is_empty() {
+                    self.session.push('\n');
+                }
+                self.session.push_str(&src);
                 let mut output = self.interp.output().to_string();
                 if let Some(v) = &value {
                     output.push_str(&format!("= {v}\n"));
@@ -1623,12 +2062,53 @@ impl Repl {
                 "cleared".to_string()
             }
             ":output" => self.interp.output().to_string(),
+            cmd if cmd.starts_with(":type ") || cmd.starts_with(":shape ") => {
+                // static analysis of the expression via the checker
+                let expr = cmd[cmd.find(' ').unwrap() + 1..].trim();
+                let probe = format!(
+                    "{}
+let __probe = {expr}",
+                    self.session
+                );
+                match tpt_lang_check(&probe) {
+                    Ok(info) => {
+                        let shape = info.shape.map(|s| {
+                            let parts: Vec<String> = s
+                                .iter()
+                                .map(|d| d.map(|n| n.to_string()).unwrap_or("_".into()))
+                                .collect();
+                            format!("[{}]", parts.join(", "))
+                        });
+                        let units = info.dim.map(|d| format!("units {d}"));
+                        let want_shape = cmd.starts_with(":shape");
+                        match (shape, units) {
+                            (Some(s), Some(u)) if want_shape => format!("shape {s} {u}"),
+                            (Some(s), None) if want_shape => format!("shape {s}"),
+                            (None, _) if want_shape => "(no static shape known)".into(),
+                            (Some(s), Some(u)) => format!("tensor shape {s}, {u}"),
+                            (Some(s), None) => format!("tensor shape {s}"),
+                            (None, Some(u)) => u,
+                            (None, None) => "(no static type known)".into(),
+                        }
+                    }
+                    Err(e) => format!("{}: {}", e.kind, e.message),
+                }
+            }
+            cmd if cmd.starts_with(":load ") => {
+                let path = cmd[cmd.find(' ').unwrap() + 1..].trim();
+                match std::fs::read_to_string(path) {
+                    Ok(src) => match self.interp.run(&src) {
+                        Ok(_) => format!("loaded {path}"),
+                        Err(e) => format!("{}: {}", e.kind, e.message),
+                    },
+                    Err(e) => format!("cannot read {path}: {e}"),
+                }
+            }
             other => format!("unknown command '{other}' — try :help"),
         };
         ReplOutcome::Magic(out)
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -1701,9 +2181,217 @@ hypot(3, 4)",
     // --------------------------- object model --------------------------------
 
     #[test]
+    fn for_loops_iterate_ranges_lists_tensors_and_dicts() {
+        // range 0..5
+        assert!(matches!(
+            eval_str(
+                "let total = 0
+for i in 0..5 {
+    total = total + i
+}
+total"
+            ),
+            Value::Num(n) if n == 10.0
+        ));
+        // list iteration
+        let v = eval_str(
+            "let acc = []
+let l = [10, 20, 30]
+for x in l {
+    acc = acc + [x * 2]
+}
+acc[2]",
+        );
+        assert_eq!(v, Value::Num(60.0));
+        // tensor (flat)
+        let v = eval_str(
+            "let t = ones([2, 3])
+let s = 0
+for x in t {
+    s = s + x
+}
+s",
+        );
+        assert_eq!(v, Value::Num(6.0));
+        // dict keys (sorted, deterministic)
+        let v = eval_str(
+            "let last = \"\"
+for k in {\"b\": 1, \"a\": 2} {
+    last = k
+}
+last",
+        );
+        assert_eq!(v, Value::Str("b".into()));
+    }
+
+    #[test]
+    fn elif_chains_pick_the_right_branch() {
+        let v = eval_str(
+            "let x = 15
+if x < 10 {
+    \"small\"
+} elif x < 20 {
+    \"medium\"
+} else {
+    \"large\"
+}",
+        );
+        assert_eq!(v, Value::Str("medium".into()));
+        let v = eval_str(
+            "let x = 99
+if x < 10 { 1 } elif x < 20 { 2 } else { 3 }",
+        );
+        assert_eq!(v, Value::Num(3.0));
+    }
+
+    #[test]
+    fn keyword_arguments_bind_by_name() {
+        assert!(matches!(
+            eval_str("def sub(a, b) { return a - b }
+        sub(b = 2, a = 9)"),
+            Value::Num(n) if n == 7.0
+        ));
+        // mixed positional + keyword + defaults
+        assert!(matches!(
+            eval_str("def f(x, y = 10, z = 100) { return x + y + z }
+        f(1, z = 5)"),
+            Value::Num(n) if n == 16.0
+        ));
+        // unknown keyword names the parameter
+        let mut it = Interpreter::new();
+        let err = it
+            .run(
+                "def f(a) { return a }
+f(nope = 1)",
+            )
+            .unwrap_err();
+        assert_eq!(err.kind, "TypeError");
+        assert!(err.message.contains("nope"));
+        // duplicate binding is rejected
+        let err = it
+            .run(
+                "def f(a) { return a }
+f(1, a = 2)",
+            )
+            .unwrap_err();
+        assert!(err.message.contains("multiple values"), "{}", err.message);
+    }
+
+    #[test]
+    fn print_interpolates_brace_expressions() {
+        let mut it = Interpreter::new();
+        it.run(
+            "let name = \"tpt\"
+let rate = 0.25",
+        )
+        .unwrap();
+        it.run("print \"hello {name}, quarter = {rate * 4}\"")
+            .unwrap();
+        assert_eq!(
+            it.output(),
+            "hello tpt, quarter = 1
+"
+        );
+        // escaped braces stay literal
+        it.run("print \"{{literal}}\"").unwrap();
+        assert!(it.output().ends_with(
+            "{literal}
+"
+        ));
+    }
+
+    #[test]
+    fn chained_and_dict_member_assignment() {
+        // dict members are assignable via dot syntax
+        let v = eval_str(
+            "let d = {\"a\": 1}
+d.b = 7
+d.a + d.b",
+        );
+        assert_eq!(v, Value::Num(8.0));
+        // chained member assignment through a module of modules
+        let v = eval_str(
+            "module inner { let x = 1 }
+module outer { let inner = inner }
+outer.inner.x = 9
+outer.inner.x",
+        );
+        assert_eq!(v, Value::Num(9.0));
+    }
+
+    #[test]
+    fn tensor_multi_index_and_slices() {
+        let t = eval_str(
+            "let t = ones([3, 4])
+t[1, 2]",
+        );
+        assert_eq!(t, Value::Num(1.0));
+        // flat index still works
+        let v = eval_str(
+            "let l = [1, 2, 3, 4]
+l[1:3]",
+        );
+        assert!(matches!(v, Value::List(ref l) if l.lock().unwrap().len() == 2));
+        // tensor row slice keeps shape
+        let mut it = Interpreter::new();
+        let v = it
+            .run(
+                "let m = ones([4, 2])
+let s = m[1:3]
+sum(s)",
+            )
+            .unwrap()
+            .unwrap();
+        assert_eq!(v, Value::Num(4.0));
+        // open-ended slice on a list
+        let v = eval_str(
+            "let l = [9, 8, 7]
+l[1:]",
+        );
+        assert!(matches!(v, Value::List(ref l) if l.lock().unwrap().len() == 2));
+        // string index
+        assert_eq!(eval_str("\"cat\"[1]"), Value::Str("a".into()));
+    }
+
+    #[test]
+    fn string_natives_cover_the_common_set() {
+        assert_eq!(eval_str("upper(\"tpt\")"), Value::Str("TPT".into()));
+        assert_eq!(eval_str("lower(\"TPT\")"), Value::Str("tpt".into()));
+        assert_eq!(eval_str("trim(\"  x  \")"), Value::Str("x".into()));
+        assert_eq!(
+            eval_str("contains(\"hello world\", \"wor\")"),
+            Value::Bool(true)
+        );
+        let parts = eval_str("split(\"a,b,c\", \",\")");
+        assert!(matches!(parts, Value::List(ref l) if l.lock().unwrap().len() == 3));
+    }
+
+    #[test]
+    fn repl_type_and_shape_magics_use_the_checker() {
+        let mut repl = Repl::new();
+        match repl.feed(":shape ones([2, 3])") {
+            ReplOutcome::Magic(out) => assert!(out.contains("[2, 3]"), "{out}"),
+            other => panic!("expected magic, got {other:?}"),
+        }
+        repl.feed("let v = 3.0 m");
+        match repl.feed(":type v") {
+            ReplOutcome::Magic(out) => assert!(out.contains("m"), "{out}"),
+            other => panic!("expected magic, got {other:?}"),
+        }
+        match repl.feed(":type 1 + 2") {
+            ReplOutcome::Magic(_) => {}
+            other => panic!("expected magic, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn parameters_have_defaults() {
-        assert!(matches!(eval_str("def f(x, y = 2) { return x * y }\nf(3)"), Value::Num(n) if n == 6.0));
-        assert!(matches!(eval_str("def f(x, y = 2) { return x * y }\nf(3, 4)"), Value::Num(n) if n == 12.0));
+        assert!(
+            matches!(eval_str("def f(x, y = 2) { return x * y }\nf(3)"), Value::Num(n) if n == 6.0)
+        );
+        assert!(
+            matches!(eval_str("def f(x, y = 2) { return x * y }\nf(3, 4)"), Value::Num(n) if n == 12.0)
+        );
         // signature renders defaults (REPL echo)
         let mut it = Interpreter::new();
         it.run("def f(x, y = 2) { return x * y }").unwrap();
@@ -1714,11 +2402,13 @@ hypot(3, 4)",
     #[test]
     fn missing_required_argument_names_parameter() {
         let mut it = Interpreter::new();
-        let err = it
-            .run("def f(x, y, z = 3) { return x }\nf(1)")
-            .unwrap_err();
+        let err = it.run("def f(x, y, z = 3) { return x }\nf(1)").unwrap_err();
         assert_eq!(err.kind, "TypeError");
-        assert!(err.message.contains("y") && err.message.contains("required"), "{}", err.message);
+        assert!(
+            err.message.contains("y") && err.message.contains("required"),
+            "{}",
+            err.message
+        );
     }
 
     #[test]
@@ -1807,9 +2497,7 @@ a.f() + b.f()",
     #[test]
     fn unknown_module_member_is_an_attribute_error() {
         let mut it = Interpreter::new();
-        let err = it
-            .run("module m { let x = 1 }\nm.nope")
-            .unwrap_err();
+        let err = it.run("module m { let x = 1 }\nm.nope").unwrap_err();
         assert_eq!(err.kind, "AttributeError");
     }
 
@@ -1853,9 +2541,11 @@ sum(m)",
     #[test]
     fn native_registration_from_rust() {
         let mut it = Interpreter::new();
-        it.register_native("double", |args| match args.first().and_then(|v| v.as_num()) {
-            Some(x) => Ok(Value::Num(2.0 * x)),
-            None => Err("double() requires a number".into()),
+        it.register_native("double", |args| {
+            match args.first().and_then(|v| v.as_num()) {
+                Some(x) => Ok(Value::Num(2.0 * x)),
+                None => Err("double() requires a number".into()),
+            }
         });
         let v = it.run("double(21)").unwrap().unwrap();
         assert_eq!(v, Value::Num(42.0));
@@ -2099,13 +2789,10 @@ print r
         it.add_breakpoint("print");
         it.add_watch("m");
         let mut watch_val = None;
-        it.run_debug(
-            "let m = ones([2, 2])\nprint sum(m)",
-            &mut |frame| {
-                watch_val = frame.watches[0].value.clone();
-                DebugAction::Continue
-            },
-        )
+        it.run_debug("let m = ones([2, 2])\nprint sum(m)", &mut |frame| {
+            watch_val = frame.watches[0].value.clone();
+            DebugAction::Continue
+        })
         .unwrap();
         match watch_val.expect("watch evaluated") {
             Value::Tensor(t) => assert_eq!(t.shape(), &[2, 2]),
@@ -2156,5 +2843,11 @@ while i < 3 {
     }
 }
 
-
-
+/// Static analysis for the REPL `:type`/`:shape` magics: returns the
+/// checker's knowledge for the single binding `__probe` defined by `src`.
+fn tpt_lang_check(src: &str) -> Result<crate::check::BindingInfo, crate::check::CheckError> {
+    use std::collections::BTreeMap;
+    let bindings: BTreeMap<String, crate::check::BindingInfo> =
+        crate::check::analyze_bindings(src)?;
+    Ok(bindings.get("__probe").cloned().unwrap_or_default())
+}

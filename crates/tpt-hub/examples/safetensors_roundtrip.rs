@@ -4,7 +4,10 @@
 
 use std::collections::HashMap;
 
-use tpt_hub::{load_safetensors, load_tptb, save_safetensors, save_tptb, tensor_from_json_debug, tensor_to_json_debug};
+use tpt_hub::{
+    load_safetensors, load_tptb, save_safetensors, save_tptb, tensor_from_json_debug,
+    tensor_to_json_debug,
+};
 use tpt_tensor::Tensor;
 
 fn main() {

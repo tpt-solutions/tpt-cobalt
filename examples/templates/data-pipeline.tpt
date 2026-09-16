@@ -1,0 +1,25 @@
+# Tensor slicing, loops, and aggregation — the shape of a data pipeline.
+
+let raw = ones([6, 4])
+
+# slice rows, aggregate
+let first_half = raw[0:3]
+let total = sum(first_half)
+print "first half sum = {total}"
+
+# per-row scaling with a loop
+let i = 0
+let scaled = []
+for i in 0..6 {
+    scaled = scaled + [i * raw[i, 0]]
+}
+print "row-weighted first column = {scaled}"
+
+# dictionaries as records
+let d = {"alpha": 1, "beta": 2}
+d.gamma = 3
+let total_k = 0
+for k in d {
+    total_k = total_k + d[k]
+}
+print "record total = {total_k}"

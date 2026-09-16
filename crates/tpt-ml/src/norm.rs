@@ -20,11 +20,17 @@ pub struct LayerNorm {
     eps: f64,
 }
 
+#[allow(clippy::needless_range_loop)] // index math mirrors the reduction formulas
 impl LayerNorm {
     pub fn new(d: usize, eps: f64) -> Self {
         let gamma = Tensor::from_typed(vec![1.0_f64; d]).with_autograd();
         let beta = Tensor::from_typed(vec![0.0_f64; d]).with_autograd();
-        LayerNorm { gamma, beta, d, eps }
+        LayerNorm {
+            gamma,
+            beta,
+            d,
+            eps,
+        }
     }
 
     pub fn d(&self) -> usize {
@@ -37,7 +43,11 @@ impl Module for LayerNorm {
         let shape = input.shape().to_vec();
         let total = input.numel();
         let d = self.d;
-        assert_eq!(total % d, 0, "LayerNorm: last dim {d} must divide numel {total}");
+        assert_eq!(
+            total % d,
+            0,
+            "LayerNorm: last dim {d} must divide numel {total}"
+        );
         let rows = total / d;
         let v = input.to_vec::<f64>().unwrap();
         let g = self.gamma.to_vec::<f64>().unwrap();
@@ -67,11 +77,10 @@ impl Module for LayerNorm {
             let in_node = input.node();
             let g_node = self.gamma.node();
             let b_node = self.beta.node();
-            let parents: Vec<Arc<AutogradNode>> =
-                [in_node.clone(), g_node.clone(), b_node.clone()]
-                    .into_iter()
-                    .flatten()
-                    .collect();
+            let parents: Vec<Arc<AutogradNode>> = [in_node.clone(), g_node.clone(), b_node.clone()]
+                .into_iter()
+                .flatten()
+                .collect();
             let v2 = v.clone();
             let d2 = d;
             let eps2 = eps;
@@ -152,6 +161,7 @@ pub struct BatchNorm2d {
     eps: f64,
 }
 
+#[allow(clippy::needless_range_loop)] // index math mirrors the reduction formulas
 impl BatchNorm2d {
     pub fn new(channels: usize, eps: f64) -> Self {
         let gamma = Tensor::from_typed(vec![1.0_f64; channels]).with_autograd();
@@ -212,11 +222,10 @@ impl Module for BatchNorm2d {
             let in_node = input.node();
             let g_node = self.gamma.node();
             let b_node = self.beta.node();
-            let parents: Vec<Arc<AutogradNode>> =
-                [in_node.clone(), g_node.clone(), b_node.clone()]
-                    .into_iter()
-                    .flatten()
-                    .collect();
+            let parents: Vec<Arc<AutogradNode>> = [in_node.clone(), g_node.clone(), b_node.clone()]
+                .into_iter()
+                .flatten()
+                .collect();
             let v2 = v.clone();
             let c2 = c;
             let hw2 = hw;
@@ -346,7 +355,9 @@ mod tests {
     #[test]
     fn batchnorm_channel_stats() {
         // input [1, 2, 1, 1]: channel0=2, channel1=4; gamma=1,beta=0
-        let x = Tensor::from_typed(vec![2.0_f64, 4.0]).reshape(&[1, 2, 1, 1]).unwrap();
+        let x = Tensor::from_typed(vec![2.0_f64, 4.0])
+            .reshape(&[1, 2, 1, 1])
+            .unwrap();
         let bn = BatchNorm2d::new(2, 1e-5);
         let y = bn.forward(&x);
         let v = y.to_vec::<f64>().unwrap();

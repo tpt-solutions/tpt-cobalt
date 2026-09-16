@@ -79,14 +79,8 @@ mod tests {
     #[test]
     fn reduce_sums_across_devices() {
         let mut acc = GradAccumulator::new();
-        acc.accumulate(
-            Device::Cpu,
-            vec![Tensor::from_typed(vec![1.0_f64, 2.0])],
-        );
-        acc.accumulate(
-            Device::Wgpu,
-            vec![Tensor::from_typed(vec![10.0_f64, 20.0])],
-        );
+        acc.accumulate(Device::Cpu, vec![Tensor::from_typed(vec![1.0_f64, 2.0])]);
+        acc.accumulate(Device::Wgpu, vec![Tensor::from_typed(vec![10.0_f64, 20.0])]);
         assert_eq!(acc.device_count(), 2);
         let reduced = acc.reduce();
         assert_eq!(reduced.len(), 1);
@@ -98,7 +92,10 @@ mod tests {
         let mut acc = GradAccumulator::new();
         acc.accumulate(
             Device::Cpu,
-            vec![Tensor::from_typed(vec![3.0_f64]), Tensor::from_typed(vec![4.0_f64])],
+            vec![
+                Tensor::from_typed(vec![3.0_f64]),
+                Tensor::from_typed(vec![4.0_f64]),
+            ],
         );
         let reduced = acc.reduce();
         assert_eq!(reduced.len(), 2);
@@ -123,7 +120,10 @@ mod tests {
         acc.accumulate(Device::Cpu, vec![Tensor::from_typed(vec![1.0_f64])]);
         acc.accumulate(
             Device::Wgpu,
-            vec![Tensor::from_typed(vec![1.0_f64]), Tensor::from_typed(vec![2.0_f64])],
+            vec![
+                Tensor::from_typed(vec![1.0_f64]),
+                Tensor::from_typed(vec![2.0_f64]),
+            ],
         );
         acc.reduce();
     }

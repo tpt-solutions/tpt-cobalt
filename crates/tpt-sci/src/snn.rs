@@ -85,9 +85,11 @@ impl LifLayer {
             .iter()
             .map(|&x| if x >= self.threshold { 1.0 } else { 0.0 })
             .collect();
-        let spikes = Tensor::from_typed(spk_data).reshape(&[self.n_out(), 1]).unwrap();
+        let spikes = Tensor::from_typed(spk_data)
+            .reshape(&[self.n_out(), 1])
+            .unwrap();
 
-        let v_prime_node = v_prime.node().map(|n| n.clone());
+        let v_prime_node = v_prime.node();
         let spikes = match v_prime_node {
             None => spikes,
             Some(node) => {
@@ -105,7 +107,9 @@ impl LifLayer {
                         })
                         .collect();
                     node.accumulate_grad(
-                        &Tensor::from_typed(grad_v).reshape(&[v_data.len(), 1]).unwrap(),
+                        &Tensor::from_typed(grad_v)
+                            .reshape(&[v_data.len(), 1])
+                            .unwrap(),
                     );
                 })
             }
@@ -113,10 +117,7 @@ impl LifLayer {
 
         // subtractive reset stays on the tape (spikes carry the surrogate VJP)
         let membrane = add(&v_prime, &scaled(&spikes, -self.threshold));
-        LifStep {
-            membrane,
-            spikes,
-        }
+        LifStep { membrane, spikes }
     }
 
     /// Unroll `inputs.len()` steps from membrane state `v0`; returns one
@@ -229,13 +230,15 @@ mod tests {
         //   ∂L/∂v_1  = 0.95·0.17110 = 0.16254
         //   ∂L/∂v'_1 = 0.16254·(1 − θ·d_1) = 0.11297
         //   ∂L/∂w    = ∂L/∂v'_1 + ∂L/∂v'_2 = 0.2840683878716728
-        let w = Tensor::from_typed(vec![0.4]).reshape(&[1, 1]).unwrap().with_autograd();
+        let w = Tensor::from_typed(vec![0.4])
+            .reshape(&[1, 1])
+            .unwrap()
+            .with_autograd();
         let lyr = LifLayer::new(w.clone(), TAU, DT, THETA, BETA);
         let inputs = vec![col(&[1.0]), col(&[1.0])];
         let steps = lyr.simulate(&col(&[0.0]), &inputs);
-        let loss = tpt_autograd::sum_lastdim(
-            &steps.last().unwrap().membrane.reshape(&[1, 1]).unwrap(),
-        );
+        let loss =
+            tpt_autograd::sum_lastdim(&steps.last().unwrap().membrane.reshape(&[1, 1]).unwrap());
         backward(&loss);
         let g = w.grad().unwrap().to_vec::<f64>().unwrap()[0];
         assert!(
@@ -256,13 +259,15 @@ mod tests {
                 .sum()
         };
         let h = 1e-5;
-        let w = Tensor::from_typed(vec![0.05]).reshape(&[1, 1]).unwrap().with_autograd();
+        let w = Tensor::from_typed(vec![0.05])
+            .reshape(&[1, 1])
+            .unwrap()
+            .with_autograd();
         let lyr = LifLayer::new(w.clone(), TAU, DT, THETA, beta);
         let inputs: Vec<Tensor> = (0..8).map(|_| col(&[1.0])).collect();
         let steps = lyr.simulate(&col(&[0.0]), &inputs);
-        let loss = tpt_autograd::sum_lastdim(
-            &steps.last().unwrap().membrane.reshape(&[1, 1]).unwrap(),
-        );
+        let loss =
+            tpt_autograd::sum_lastdim(&steps.last().unwrap().membrane.reshape(&[1, 1]).unwrap());
         backward(&loss);
         let g = w.grad().unwrap().to_vec::<f64>().unwrap()[0];
         let fd = (run_smooth(0.05 + h) - run_smooth(0.05 - h)) / (2.0 * h);

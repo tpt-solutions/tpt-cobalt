@@ -9,8 +9,8 @@
 //!   `u32` dimensions, then raw little-endian element data. Zero dependencies
 //!   beyond the tensor itself; ideal for IPC frames and checkpoints.
 
-use serde_json::json;
 use serde_json::Value;
+use serde_json::json;
 use tpt_tensor::{DType, Tensor};
 
 use crate::safetensors::HubError;
@@ -33,14 +33,54 @@ pub fn tensor_to_json_debug(t: &Tensor) -> String {
 fn json_values(t: &Tensor) -> Value {
     let shape = t.shape().to_vec();
     let flat: Vec<Value> = match t.dtype() {
-        DType::F64 => t.to_vec::<f64>().unwrap().iter().map(|v| json!(*v)).collect(),
-        DType::F32 => t.to_vec::<f32>().unwrap().iter().map(|v| json!(*v)).collect(),
-        DType::I64 => t.to_vec::<i64>().unwrap().iter().map(|v| json!(*v)).collect(),
-        DType::I32 => t.to_vec::<i32>().unwrap().iter().map(|v| json!(*v)).collect(),
-        DType::I16 => t.to_vec::<i16>().unwrap().iter().map(|v| json!(*v)).collect(),
-        DType::I8 => t.to_vec::<i8>().unwrap().iter().map(|v| json!(*v)).collect(),
-        DType::U8 => t.to_vec::<u8>().unwrap().iter().map(|v| json!(*v)).collect(),
-        DType::Bool => t.to_vec::<bool>().unwrap().iter().map(|v| json!(*v)).collect(),
+        DType::F64 => t
+            .to_vec::<f64>()
+            .unwrap()
+            .iter()
+            .map(|v| json!(*v))
+            .collect(),
+        DType::F32 => t
+            .to_vec::<f32>()
+            .unwrap()
+            .iter()
+            .map(|v| json!(*v))
+            .collect(),
+        DType::I64 => t
+            .to_vec::<i64>()
+            .unwrap()
+            .iter()
+            .map(|v| json!(*v))
+            .collect(),
+        DType::I32 => t
+            .to_vec::<i32>()
+            .unwrap()
+            .iter()
+            .map(|v| json!(*v))
+            .collect(),
+        DType::I16 => t
+            .to_vec::<i16>()
+            .unwrap()
+            .iter()
+            .map(|v| json!(*v))
+            .collect(),
+        DType::I8 => t
+            .to_vec::<i8>()
+            .unwrap()
+            .iter()
+            .map(|v| json!(*v))
+            .collect(),
+        DType::U8 => t
+            .to_vec::<u8>()
+            .unwrap()
+            .iter()
+            .map(|v| json!(*v))
+            .collect(),
+        DType::Bool => t
+            .to_vec::<bool>()
+            .unwrap()
+            .iter()
+            .map(|v| json!(*v))
+            .collect(),
     };
     nest(&flat, &shape)
 }
@@ -207,16 +247,18 @@ pub fn load_tptb(bytes: &[u8]) -> Result<Tensor, HubError> {
         return Err(HubError::BadHeaderLen);
     }
     let shape: Vec<usize> = (0..rank)
-        .map(|i| {
-            u32::from_le_bytes(bytes[16 + i * 4..16 + i * 4 + 4].try_into().unwrap()) as usize
-        })
+        .map(|i| u32::from_le_bytes(bytes[16 + i * 4..16 + i * 4 + 4].try_into().unwrap()) as usize)
         .collect();
     let data = &bytes[header_end..];
     let expected: usize = shape.iter().product::<usize>() * dtype.size_of();
     if data.len() < expected {
         return Err(HubError::OffsetOutOfRange);
     }
-    Ok(Tensor::from_le_bytes(data[..expected].to_vec(), dtype, &shape))
+    Ok(Tensor::from_le_bytes(
+        data[..expected].to_vec(),
+        dtype,
+        &shape,
+    ))
 }
 
 #[cfg(test)]
@@ -251,7 +293,9 @@ mod tests {
         assert_eq!(bb.dtype(), DType::Bool);
         assert_eq!(bb.to_vec::<bool>().unwrap(), vec![true, false, true]);
 
-        let i = Tensor::from_typed(vec![-7_i32, 0, 42]).reshape(&[3, 1]).unwrap();
+        let i = Tensor::from_typed(vec![-7_i32, 0, 42])
+            .reshape(&[3, 1])
+            .unwrap();
         let ji = tensor_to_json_debug(&i);
         let ii = tensor_from_json_debug(&ji).unwrap();
         assert_eq!(ii.dtype(), DType::I32);
@@ -262,7 +306,9 @@ mod tests {
     #[test]
     fn json_debug_rejects_garbage() {
         assert!(tensor_from_json_debug("not json").is_err());
-        assert!(tensor_from_json_debug("{\"dtype\":\"f16\",\"shape\":[1],\"values\":[1]}").is_err());
+        assert!(
+            tensor_from_json_debug("{\"dtype\":\"f16\",\"shape\":[1],\"values\":[1]}").is_err()
+        );
     }
 
     #[test]
@@ -298,7 +344,10 @@ mod tests {
     fn tptb_rejects_truncated_and_bad_magic() {
         let t = Tensor::from_typed(vec![1.0_f64, 2.0]);
         let buf = save_tptb(&t);
-        assert!(matches!(load_tptb(&buf[..buf.len() - 1]), Err(HubError::OffsetOutOfRange)));
+        assert!(matches!(
+            load_tptb(&buf[..buf.len() - 1]),
+            Err(HubError::OffsetOutOfRange)
+        ));
         let mut bad = buf.clone();
         bad[0] = b'X';
         assert!(matches!(load_tptb(&bad), Err(HubError::TooSmall)));

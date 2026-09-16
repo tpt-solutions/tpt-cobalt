@@ -1,6 +1,6 @@
 //! Criterion micro-benchmarks for the ML stack: Linear fwd+bwd, transformer
 //! block forward, and the TPT-Script `train_step` interpreter path.
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use tpt_ml::Module;
 use tpt_tensor::Tensor;
 

@@ -59,7 +59,7 @@ impl BufferPool {
                 let buf = list.pop().unwrap();
                 if list.is_empty() {
                     let cap = *_cap;
-                    drop(list);
+                    let _ = list; // release the lock before map removal
                     self.free.remove(&cap);
                 }
                 self.stats.reuse_hits += 1;

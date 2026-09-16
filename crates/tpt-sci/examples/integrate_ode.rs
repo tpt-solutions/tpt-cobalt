@@ -16,7 +16,10 @@ fn main() {
     let y1 = solve_ivp(&f, &y0, 0.0, 1.0, 20);
 
     let value = y1.to_vec::<f64>().unwrap()[0];
-    println!("y(1) = {value:.6}  (closed form e^-1 = {:.6})", (-1.0_f64).exp());
+    println!(
+        "y(1) = {value:.6}  (closed form e^-1 = {:.6})",
+        (-1.0_f64).exp()
+    );
     assert!((value - (-1.0_f64).exp()).abs() < 1e-3);
 
     // --- Differentiate through the solver -----------------------------------
@@ -28,6 +31,9 @@ fn main() {
 
     // --- Single explicit-Euler steps are available too ----------------------
     let y_half = euler_step(&f, &y0, 0.0, 0.5);
-    println!("one Euler half-step: {:.6} (exact {:.6})",
-        y_half.to_vec::<f64>().unwrap()[0], (-0.5_f64).exp());
+    println!(
+        "one Euler half-step: {:.6} (exact {:.6})",
+        y_half.to_vec::<f64>().unwrap()[0],
+        (-0.5_f64).exp()
+    );
 }

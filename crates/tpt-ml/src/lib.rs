@@ -6,6 +6,10 @@
 //! (decoupled weight decay). Layers are differentiable through `tpt-autograd`;
 //! `backward` then populates parameter gradients for the optimizer to consume.
 
+// The norm layers compute per-channel reductions with explicit index math
+// that mirrors the formulas; clippy's iterator rewrite obscures them.
+#![allow(clippy::needless_range_loop)]
+
 pub mod activations;
 pub mod attention;
 pub mod conv;
@@ -20,7 +24,7 @@ pub mod optim;
 pub use activations::{gelu, relu, sigmoid_act, tanh};
 pub use attention::{MultiHeadAttention, TransformerBlock};
 pub use conv::{Conv1d, Conv2d, Conv3d};
-pub use data::{Dataset, DataLoader, TensorDataset};
+pub use data::{DataLoader, Dataset, TensorDataset};
 pub use embedding::Embedding;
 pub use layers::{Linear, Sequential};
 pub use loss::{
@@ -30,5 +34,5 @@ pub use loss::{
 pub use module::Module;
 pub use norm::{BatchNorm2d, LayerNorm};
 pub use optim::{
-    AdamW, CosineAnnealingLR, ExponentialLR, LrScheduler, LinearLR, Optimizer, Sgd, StepLR,
+    AdamW, CosineAnnealingLR, ExponentialLR, LinearLR, LrScheduler, Optimizer, Sgd, StepLR,
 };

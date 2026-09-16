@@ -34,3 +34,4 @@ keep shipping independently; these are not kept in sync.
 3. Cross-repo `../tpt-other/...` path deps were repointed to `../../tpt-other/...`.
 
 Re-fork by re-running `scripts/fork.ps1` then `scripts/concretize.py` (idempotent).
+| `forked/tpt-rust6/crates/tpt-sym`, `.../tpt-ui-macro` | `tpt-solutions/tpt-rust6` | `3510ba455c4c13803a8f34b5036792d377eb7ea1` | Added 2026-09-16 (fork-scope extension): symbolic math + UI proc-macro, manifests concretized |

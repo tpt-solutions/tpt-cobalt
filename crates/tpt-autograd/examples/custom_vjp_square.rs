@@ -29,11 +29,12 @@ fn cube(x: &Tensor) -> Tensor {
         vec![Arc::clone(&parent)],
         move |grad: &Tensor| {
             let gv = grad.to_vec::<f64>().unwrap();
-            let local: Vec<f64> =
-                xv.iter().zip(gv.iter()).map(|(x, g)| 3.0 * x * x * g).collect();
-            parent.accumulate_grad(
-                &Tensor::from_typed(local).reshape(&shape).unwrap(),
-            );
+            let local: Vec<f64> = xv
+                .iter()
+                .zip(gv.iter())
+                .map(|(x, g)| 3.0 * x * x * g)
+                .collect();
+            parent.accumulate_grad(&Tensor::from_typed(local).reshape(&shape).unwrap());
         },
     )
 }
@@ -46,6 +47,9 @@ fn main() {
     println!("y        = {:?}", y.to_vec::<f64>().unwrap());
 
     backward(&y);
-    println!("dy/dx    = {:?}", x.grad().unwrap().to_vec::<f64>().unwrap());
+    println!(
+        "dy/dx    = {:?}",
+        x.grad().unwrap().to_vec::<f64>().unwrap()
+    );
     assert_eq!(x.grad().unwrap().to_vec::<f64>().unwrap(), vec![3.0, 12.0]);
 }

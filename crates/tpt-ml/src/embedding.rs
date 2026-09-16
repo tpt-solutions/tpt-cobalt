@@ -19,7 +19,8 @@ pub struct Embedding {
 
 impl Embedding {
     pub fn new(num_embeddings: usize, embedding_dim: usize) -> Self {
-        let weight = Tensor::from_typed(vec![0.0_f64; num_embeddings * embedding_dim]).with_autograd();
+        let weight =
+            Tensor::from_typed(vec![0.0_f64; num_embeddings * embedding_dim]).with_autograd();
         Embedding {
             weight,
             num_embeddings,
@@ -54,32 +55,32 @@ impl Module for Embedding {
         shape.push(d);
         let mut result = Tensor::from_typed(out).reshape(&shape).unwrap();
 
-        if self.weight.requires_grad() {
-            if let Some(node) = self.weight.node() {
-                let v_node = node.clone();
-                let idim2 = idim.clone();
-                let d2 = d;
-                let nv = self.num_embeddings;
-                let shape2 = shape.clone();
-                let idx2 = idx.clone();
-                let node = AutogradNode::new(
-                    vec![node],
-                    Box::new(move |grad: &Tensor| {
-                        let g = grad.to_vec::<f64>().unwrap();
-                        let mut gw = vec![0.0f64; nv * d2];
-                        for (k, &i) in idx2.iter().enumerate() {
-                            let vi = i as usize;
-                            for j in 0..d2 {
-                                gw[vi * d2 + j] += g[k * d2 + j];
-                            }
+        if self.weight.requires_grad()
+            && let Some(node) = self.weight.node()
+        {
+            let v_node = node.clone();
+            let idim2 = idim.clone();
+            let d2 = d;
+            let nv = self.num_embeddings;
+            let shape2 = shape.clone();
+            let idx2 = idx.clone();
+            let node = AutogradNode::new(
+                vec![node],
+                Box::new(move |grad: &Tensor| {
+                    let g = grad.to_vec::<f64>().unwrap();
+                    let mut gw = vec![0.0f64; nv * d2];
+                    for (k, &i) in idx2.iter().enumerate() {
+                        let vi = i as usize;
+                        for j in 0..d2 {
+                            gw[vi * d2 + j] += g[k * d2 + j];
                         }
-                        v_node.accumulate_grad(&Tensor::from_typed(gw).reshape(&[nv, d2]).unwrap());
-                        let _ = &idim2;
-                        let _ = &shape2;
-                    }),
-                );
-                result.set_node(Arc::new(node));
-            }
+                    }
+                    v_node.accumulate_grad(&Tensor::from_typed(gw).reshape(&[nv, d2]).unwrap());
+                    let _ = &idim2;
+                    let _ = &shape2;
+                }),
+            );
+            result.set_node(Arc::new(node));
         }
         result
     }

@@ -18,9 +18,18 @@ fn main() {
     println!("y        = {}", y.to_vec::<f64>().unwrap()[0]);
 
     backward(&y);
-    println!("dy/da    = {}", a.grad().unwrap().to_vec::<f64>().unwrap()[0]);
-    println!("dy/db    = {}", b.grad().unwrap().to_vec::<f64>().unwrap()[0]);
-    println!("dy/dc    = {}", c.grad().unwrap().to_vec::<f64>().unwrap()[0]);
+    println!(
+        "dy/da    = {}",
+        a.grad().unwrap().to_vec::<f64>().unwrap()[0]
+    );
+    println!(
+        "dy/db    = {}",
+        b.grad().unwrap().to_vec::<f64>().unwrap()[0]
+    );
+    println!(
+        "dy/dc    = {}",
+        c.grad().unwrap().to_vec::<f64>().unwrap()[0]
+    );
 
     // --- Vector op with broadcasting --------------------------------------
     // y = mean(exp(x)); dy/dx_i = exp(x_i) / n
@@ -29,8 +38,7 @@ fn main() {
     backward(&loss);
 
     let n = 3.0;
-    let expected: Vec<f64> =
-        [0.0_f64, 1.0, 2.0].iter().map(|v| v.exp() / n).collect();
+    let expected: Vec<f64> = [0.0_f64, 1.0, 2.0].iter().map(|v| v.exp() / n).collect();
     let got = x.grad().unwrap().to_vec::<f64>().unwrap();
     println!("dmean/dx = {:?}", got);
     for (g, e) in got.iter().zip(expected.iter()) {

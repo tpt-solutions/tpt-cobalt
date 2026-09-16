@@ -9,16 +9,24 @@ use tpt_lang::{Environment, Value};
 use tpt_tensor::Tensor;
 
 fn eq(a: Option<Value>, b: Value) -> bool {
-    matches!(a.as_ref().map(|v| tpt_lang::value_eq(v, &b)), Some(Value::Bool(true)))
+    matches!(
+        a.as_ref().map(|v| tpt_lang::value_eq(v, &b)),
+        Some(Value::Bool(true))
+    )
 }
 
 fn main() {
     // Global scope.
     let global = Arc::new(Environment::new());
     global.define("x", Value::Num(1.0));
-    global.define("model", Value::Tensor(
-        Tensor::from_typed(vec![0.5_f64; 4]).reshape(&[2, 2]).unwrap(),
-    ));
+    global.define(
+        "model",
+        Value::Tensor(
+            Tensor::from_typed(vec![0.5_f64; 4])
+                .reshape(&[2, 2])
+                .unwrap(),
+        ),
+    );
 
     // Function scope: sees globals, defines locals.
     let local = Environment::child(&global);
@@ -34,7 +42,9 @@ fn main() {
     local.assign("x", Value::Num(42.0)).unwrap();
     assert!(eq(local.get("x"), Value::Num(42.0)));
 
-    local.assign("model", Value::Str(String::from("updated"))).unwrap();
+    local
+        .assign("model", Value::Str(String::from("updated")))
+        .unwrap();
     assert!(eq(global.get("model"), Value::Str("updated".into())));
 
     // Assigning an undefined name is an error.

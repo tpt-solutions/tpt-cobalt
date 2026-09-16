@@ -178,8 +178,8 @@ impl Notebook {
 }
 
 const KEYWORDS: &[&str] = &[
-    "let", "def", "fn", "if", "else", "while", "return", "print", "assert",
-    "module", "true", "false", "nil", "None", "not",
+    "let", "def", "fn", "if", "else", "while", "return", "print", "assert", "module", "true",
+    "false", "nil", "None", "not",
 ];
 
 /// HTML rich display for values where it adds something over text: small
@@ -190,10 +190,7 @@ fn display_html(v: &Value) -> Option<String> {
             let data = t.to_vec::<f64>().ok()?;
             let shape = t.shape();
             let mut html = String::from("<table class=\"tpt-tensor\">");
-            html.push_str(&format!(
-                "<caption>Tensor{:?}</caption>",
-                shape
-            ));
+            html.push_str(&format!("<caption>Tensor{:?}</caption>", shape));
             if shape.len() == 1 {
                 html.push_str("<tr>");
                 for x in &data {

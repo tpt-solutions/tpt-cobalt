@@ -16,6 +16,9 @@ use crate::safetensors::HubError;
 
 /// One decoded protobuf field.
 #[derive(Debug, Clone)]
+/// The protobuf wire types (unused variants kept so every wire type
+/// decodes without loss).
+#[allow(dead_code)]
 enum Field<'a> {
     Varint(u64),
     Fixed64([u8; 8]),
@@ -44,7 +47,10 @@ fn read_varint(b: &[u8], pos: &mut usize) -> Result<u64, HubError> {
 }
 
 /// Decode every field of one protobuf message into `(field_number, payload)`.
-fn decode_message(b: &[u8]) -> Result<Vec<(u32, Field)>, HubError> {
+/// One decoded field: `(field_number, payload)`.
+type FieldPair<'a> = (u32, Field<'a>);
+
+fn decode_message(b: &[u8]) -> Result<Vec<FieldPair<'_>>, HubError> {
     let mut out = Vec::new();
     let mut pos = 0;
     while pos < b.len() {
@@ -146,10 +152,10 @@ fn parse_graph(graph: &[u8], model: &mut OnnxModel) -> Result<(), HubError> {
     for (field, payload) in decode_message(graph)? {
         match field {
             1 => {
-                if let Field::Bytes(node) = &payload {
-                    if let Some(op) = node_op_type(node) {
-                        model.ops.push(op);
-                    }
+                if let Field::Bytes(node) = &payload
+                    && let Some(op) = node_op_type(node)
+                {
+                    model.ops.push(op);
                 }
             }
             2 => {
@@ -158,23 +164,23 @@ fn parse_graph(graph: &[u8], model: &mut OnnxModel) -> Result<(), HubError> {
                 }
             }
             5 => {
-                if let Field::Bytes(init) = &payload {
-                    if let Some((name, t)) = parse_initializer(init)? {
-                        model.initializers.insert(name, t);
-                    }
+                if let Field::Bytes(init) = &payload
+                    && let Some((name, t)) = parse_initializer(init)?
+                {
+                    model.initializers.insert(name, t);
                 }
             }
             11 | 12 => {
                 if let Field::Bytes(vi) = &payload {
                     // ValueInfoProto.name = field 1
                     for (f, p) in decode_message(vi)? {
-                        if f == 1 {
-                            if let Some(s) = as_str(&p) {
-                                if field == 11 {
-                                    model.inputs.push(s);
-                                } else {
-                                    model.outputs.push(s);
-                                }
+                        if f == 1
+                            && let Some(s) = as_str(&p)
+                        {
+                            if field == 11 {
+                                model.inputs.push(s);
+                            } else {
+                                model.outputs.push(s);
                             }
                         }
                     }
@@ -232,8 +238,8 @@ fn parse_initializer(tp: &[u8]) -> Result<Option<(String, Tensor)>, HubError> {
             4 => match &payload {
                 Field::Fixed32(a) => float_data.push(f32::from_le_bytes(*a)),
                 Field::Bytes(packed) => {
-                    for chunk in packed.chunks_exact(4) {
-                        float_data.push(f32::from_le_bytes(chunk.try_into().unwrap()));
+                    for chunk in packed.as_chunks::<4>().0 {
+                        float_data.push(f32::from_le_bytes(*chunk));
                     }
                 }
                 _ => {}
@@ -266,7 +272,10 @@ fn parse_initializer(tp: &[u8]) -> Result<Option<(String, Tensor)>, HubError> {
         return Ok(None);
     }
 
-    let numel: usize = dims.iter().product();
+    let numel: usize = dims
+        .iter()
+        .try_fold(1usize, |a, b| a.checked_mul(*b))
+        .ok_or(HubError::OffsetOutOfRange)?;
     let tensor = if !raw_data.is_empty() {
         let dtype = match data_type {
             ONNX_FLOAT => DType::F32,
@@ -276,7 +285,7 @@ fn parse_initializer(tp: &[u8]) -> Result<Option<(String, Tensor)>, HubError> {
             other => {
                 return Err(HubError::UnknownDtype(format!(
                     "onnx initializer dtype {other}"
-                )))
+                )));
             }
         };
         let need = numel * dtype.size_of();
@@ -287,14 +296,22 @@ fn parse_initializer(tp: &[u8]) -> Result<Option<(String, Tensor)>, HubError> {
     } else {
         match data_type {
             // typed convenience arrays; normalize to F64
-            ONNX_FLOAT | ONNX_DOUBLE => Tensor::from_typed(
-                float_data.iter().take(numel).map(|v| *v as f64),
-            )
-            .reshape(&dims)
-            .unwrap(),
-            _ => Tensor::from_typed(int64_data.iter().take(numel).map(|v| *v as f64))
-                .reshape(&dims)
-                .unwrap(),
+            ONNX_FLOAT | ONNX_DOUBLE => {
+                if float_data.len() < numel {
+                    return Err(HubError::OffsetOutOfRange);
+                }
+                Tensor::from_typed(float_data.iter().take(numel).map(|v| *v as f64))
+                    .reshape(&dims)
+                    .unwrap()
+            }
+            _ => {
+                if int64_data.len() < numel {
+                    return Err(HubError::OffsetOutOfRange);
+                }
+                Tensor::from_typed(int64_data.iter().take(numel).map(|v| *v as f64))
+                    .reshape(&dims)
+                    .unwrap()
+            }
         }
     };
     Ok(Some((name, tensor)))
@@ -397,10 +414,7 @@ mod tests {
         let m = OnnxModel::parse(&mp).unwrap();
         let f = &m.initializers["f"];
         assert_eq!(f.shape(), &[2]);
-        assert_eq!(
-            f.to_vec::<f64>().unwrap(),
-            vec![1.5, 2.5]
-        );
+        assert_eq!(f.to_vec::<f64>().unwrap(), vec![1.5, 2.5]);
     }
 
     #[test]

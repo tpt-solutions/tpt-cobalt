@@ -6,5 +6,8 @@ rust-version = "1.85"
 license = "MIT OR Apache-2.0"
 authors = ["TPT Solutions <contact@tpt.solutions>"]
 description = "Clean-room floating-point comparison macros: relative_eq, abs_diff_eq and assert variants."
+readme = "README.md"
+keywords = ["floating-point", "comparison", "assert", "testing", "numerical"]
+categories = ["development-tools::testing", "science", "algorithms"]
 
 [dependencies]

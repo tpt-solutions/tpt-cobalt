@@ -20,8 +20,8 @@
 
 use std::sync::{Arc, Mutex};
 
-use tpt_lang::Value;
 use tpt_lang::Interpreter;
+use tpt_lang::Value;
 
 /// A diagnostic in LSP shape (line/character positions, zero-based).
 #[derive(Debug, Clone, PartialEq)]
@@ -129,8 +129,8 @@ fn resolve(interp: &Interpreter, path: &str) -> Option<Value> {
 /// tensor shapes, function signatures, module member listings.
 pub fn hover_at(src: &str, line: usize, col: usize) -> Option<Hover> {
     let (start_col, path) = ident_at(src, line, col)?;
-    let mut interp = state_above(src, line);
-    let contents = match resolve(&interp, &path)? {
+    let interp = state_above(src, line);
+    let mut contents = match resolve(&interp, &path)? {
         Value::Function(f) => f.signature(),
         Value::Module(m) => {
             let members = m.member_names().join(", ");
@@ -140,6 +140,34 @@ pub fn hover_at(src: &str, line: usize, col: usize) -> Option<Hover> {
         Value::Unit(u) => format!("{} {}", u.value, u.dim),
         v => format!("{} = {}", v.type_name(), v),
     };
+    // static checker knowledge: append inferred shape and units for the
+    // *prefix* of the document above the cursor (the compile-time view)
+    if !path.contains('.') {
+        let prefix: Vec<&str> = src.lines().take(line).collect();
+        if let Ok(bindings) = tpt_lang::check::analyze_bindings(&prefix.join(
+            "
+",
+        )) && let Some(info) = bindings.get(&path)
+        {
+            let mut bits = Vec::new();
+            if let Some(shape) = &info.shape {
+                let text = shape
+                    .iter()
+                    .map(|d| d.map(|n| n.to_string()).unwrap_or_else(|| "_".into()))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                bits.push(format!("shape [{text}]"));
+            }
+            if let Some(dim) = &info.dim
+                && dim != "(dimensionless)"
+            {
+                bits.push(format!("units {dim}"));
+            }
+            if !bits.is_empty() {
+                contents.push_str(&format!("  ({})", bits.join(", ")));
+            }
+        }
+    }
     Some(Hover {
         line,
         col_start: start_col,
@@ -160,8 +188,8 @@ pub fn completions_at(src: &str, line: usize, prefix: &str) -> Vec<String> {
         let mut n: Vec<String> = interp.names();
         n.extend(
             [
-                "let", "def", "fn", "if", "else", "while", "return", "print", "assert",
-                "module", "true", "false", "nil", "None", "not",
+                "let", "def", "fn", "if", "else", "while", "return", "print", "assert", "module",
+                "true", "false", "nil", "None", "not",
             ]
             .iter()
             .map(|s| s.to_string()),
@@ -202,15 +230,11 @@ let c = geom.circle(theta)
 
     #[test]
     fn diagnostics_report_unit_and_shape_errors() {
-        let diags = analyze(
-            "let d = 3.0 m\nlet t = 5.0 s\nlet v = d + t\n",
-        );
+        let diags = analyze("let d = 3.0 m\nlet t = 5.0 s\nlet v = d + t\n");
         assert_eq!(diags.len(), 1);
         assert!(diags[0].message.contains("m"), "{:?}", diags);
 
-        let diags = analyze(
-            "let a = ones([2, 3])\nlet b = ones([4, 5])\nlet c = matmul(a, b)\n",
-        );
+        let diags = analyze("let a = ones([2, 3])\nlet b = ones([4, 5])\nlet c = matmul(a, b)\n");
         assert_eq!(diags.len(), 1);
         assert!(diags[0].message.contains("matmul"), "{:?}", diags);
 
@@ -243,7 +267,11 @@ let c = geom.circle(theta)
 
         // cursor inside `geom.circle` resolves the dotted module path
         let h = hover_at(DOC, 7, 17).unwrap();
-        assert!(h.contents.contains("<function circle(r)>"), "{}", h.contents);
+        assert!(
+            h.contents.contains("<function circle(r)>"),
+            "{}",
+            h.contents
+        );
 
         // a dotted path always resolves to its member: `geom.circle` shows
         // the function, at any cursor position within the path
@@ -262,7 +290,19 @@ m2";
 let s = t
 s";
         let h = hover_at(doc, 2, 0).unwrap();
-        assert_eq!(h.contents, "tensor [2, 2] (f64)");
+        assert!(
+            h.contents.starts_with("tensor [2, 2] (f64)"),
+            "{}",
+            h.contents
+        );
+        // the static checker's inferred shape rides along
+        assert!(h.contents.contains("shape [2, 2]"), "{}", h.contents);
+
+        let doc = "let g = 9.81 m/s^2
+let t2 = 2.0 s
+g";
+        let h = hover_at(doc, 2, 0).unwrap();
+        assert!(h.contents.contains("units m/s^2"), "{}", h.contents);
 
         // a keyword is not a binding: no hover
         assert!(hover_at(DOC, 7, 2).is_none(), "`let` has no hover");

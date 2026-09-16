@@ -1,7 +1,7 @@
 use std::any::Any;
 
-use crate::dtype::{DType, DTypeError, Num};
 use crate::device::Device;
+use crate::dtype::{DType, DTypeError, Num};
 
 /// A backend-agnostic, byte-addressed tensor buffer.
 ///

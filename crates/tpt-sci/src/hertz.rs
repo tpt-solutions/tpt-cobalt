@@ -105,7 +105,7 @@ impl HertzChain {
         let n = radii.len();
         assert_eq!(masses.len(), n, "one mass per particle");
         assert!(
-            e_star.shape() == &[1, 1] || e_star.shape() == &[1],
+            e_star.shape() == [1, 1] || e_star.shape() == [1],
             "e_star must be a [1] or [1,1] tensor"
         );
         for &(i, j) in pairs {
@@ -160,7 +160,9 @@ impl HertzChain {
     pub fn split(y: &Tensor) -> (Vec<[f64; 3]>, Vec<[f64; 3]>) {
         let v = y.to_vec::<f64>().unwrap();
         let n = v.len() / 6;
-        let pos = (0..n).map(|p| [v[3 * p], v[3 * p + 1], v[3 * p + 2]]).collect();
+        let pos = (0..n)
+            .map(|p| [v[3 * p], v[3 * p + 1], v[3 * p + 2]])
+            .collect();
         let vel = (0..n)
             .map(|p| [v[3 * n + 3 * p], v[3 * n + 3 * p + 1], v[3 * n + 3 * p + 2]])
             .collect();
@@ -185,8 +187,7 @@ impl HertzChain {
             let (nx, ny, nz) = (dx / sg, dy / sg, dz / sg);
             let r_star = tpt_phys_dem::contact::reduced_radius(self.radii[i], self.radii[j]);
             let m_eff = tpt_phys_dem::contact::reduced_mass(self.masses[i], self.masses[j]);
-            let f_hertz =
-                tpt_phys_dem::contact::hertz_normal_force(e_star, r_star, delta);
+            let f_hertz = tpt_phys_dem::contact::hertz_normal_force(e_star, r_star, delta);
             let rvx = y[n3 + 3 * i] - y[n3 + 3 * j];
             let rvy = y[n3 + 3 * i + 1] - y[n3 + 3 * j + 1];
             let rvz = y[n3 + 3 * i + 2] - y[n3 + 3 * j + 2];
@@ -228,8 +229,8 @@ impl HertzChain {
             }
         }
         let out_t = Tensor::from_typed(out).reshape(&[6 * self.n, 1]).unwrap();
-        let y_node = y.node().map(|x| x.clone());
-        let es_node = self.e_star.node().map(|x| x.clone());
+        let y_node = y.node();
+        let es_node = self.e_star.node();
         if y_node.is_none() && es_node.is_none() {
             return out_t;
         }
@@ -243,9 +244,7 @@ impl HertzChain {
                 yn.accumulate_grad(&Tensor::from_typed(gy).reshape(&shape).unwrap());
             }
             if let Some(en) = &es_node {
-                en.accumulate_grad(
-                    &Tensor::from_typed(vec![ges]).reshape(&es_shape).unwrap(),
-                );
+                en.accumulate_grad(&Tensor::from_typed(vec![ges]).reshape(&es_shape).unwrap());
             }
         })
     }
@@ -349,15 +348,7 @@ mod tests {
             .iter()
             .map(|r| DENSITY * (4.0 / 3.0) * std::f64::consts::PI * r * r * r)
             .collect();
-        HertzChain::new(
-            &radii,
-            &masses,
-            pairs,
-            [0.0, -9.81, 0.0],
-            e_star,
-            REST,
-            DT,
-        )
+        HertzChain::new(&radii, &masses, pairs, [0.0, -9.81, 0.0], e_star, REST, DT)
     }
 
     /// Three spheres on the x-axis: 0–1 and 1–2 slightly overlapping, all
@@ -438,7 +429,11 @@ mod tests {
         let run = |y0v: &[f64]| -> f64 {
             let ch = chain(3, Tensor::from_typed(vec![E_STAR]), &pairs);
             let y0 = Tensor::from_typed(y0v.to_vec()).reshape(&[18, 1]).unwrap();
-            ch.simulate(&y0, steps).to_vec::<f64>().unwrap().iter().sum()
+            ch.simulate(&y0, steps)
+                .to_vec::<f64>()
+                .unwrap()
+                .iter()
+                .sum()
         };
         let ch = chain(3, Tensor::from_typed(vec![E_STAR]), &pairs);
         let y0_leaf = initial_state().with_autograd();
@@ -472,7 +467,11 @@ mod tests {
         let run = |es: f64| -> f64 {
             let ch = chain(3, Tensor::from_typed(vec![es]), &pairs);
             let y0 = initial_state();
-            ch.simulate(&y0, steps).to_vec::<f64>().unwrap().iter().sum()
+            ch.simulate(&y0, steps)
+                .to_vec::<f64>()
+                .unwrap()
+                .iter()
+                .sum()
         };
         let es = Tensor::from_typed(vec![E_STAR]).with_autograd();
         let ch = chain(3, es.clone(), &pairs);
@@ -493,11 +492,8 @@ mod tests {
         // and positions only see gravity.
         let es = Tensor::from_typed(vec![E_STAR]).with_autograd();
         let ch = chain(2, es.clone(), &[(0, 1)]);
-        let y0 = HertzChain::state(
-            &[[0.0, 10.0, 0.0], [2.0, 10.0, 0.0]],
-            &[[0.0; 3]; 2],
-        )
-        .with_autograd();
+        let y0 = HertzChain::state(&[[0.0, 10.0, 0.0], [2.0, 10.0, 0.0]], &[[0.0; 3]; 2])
+            .with_autograd();
         let y1 = ch.step(&y0);
         backward(&y1);
         let ges = es.grad().unwrap().to_vec::<f64>().unwrap()[0];

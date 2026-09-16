@@ -1,0 +1,18 @@
+# Train an MLP from pure script.
+# Same training loop for any dataset: load real data with tpt-hub
+# (SafeTensors/GGUF/ONNX) and swap xs/ys.
+
+let net = mlp(2, 16, 1)
+let xs = ones([64, 2])
+let ys = ones([64, 1])
+
+let i = 0
+let loss = 0
+while i < 300 {
+    loss = train_step(net, xs, ys, 0.01)
+    i = i + 1
+}
+print "final loss = {loss} (target < 0.05)"
+
+let preds = predict(net, xs)
+print "predictions shape: {preds}"

@@ -17,9 +17,9 @@
 //! Fidelity: the tape field is checked numerically against the forked
 //! `ReactionSystem::eval_rhs` before gradient tests run.
 
+use std::collections::HashMap;
 use tpt_autograd::{add, exp, log, mul};
 use tpt_tensor::Tensor;
-use std::collections::HashMap;
 
 use tpt_sci_reaction_network::{RateLaw, ReactionNetwork};
 
@@ -31,7 +31,10 @@ struct TapeReaction {
     exponents: Vec<(usize, f64)>,
     /// Net stoichiometry column: `(species_index, Δ)`.
     s_column: Vec<(usize, f64)>,
-    /// Index into the rate-constant vector.
+    /// Index into the rate-constant vector (kept for the upcoming
+    /// per-reaction rate-law generalization; the current tape mirror folds
+    /// all rates through the exponent matrix).
+    #[allow(dead_code)]
     rate_idx: usize,
 }
 
@@ -126,12 +129,12 @@ impl DifferentiableNetwork {
         products: &[(usize, f64)],
         k_name: &str,
     ) {
-        let rate_idx = *self.rate_index.get(k_name).unwrap_or_else(|| panic!("unknown rate constant {k_name}"));
-        self.system.reaction(
-            reactants,
-            products,
-            RateLaw::mass_action(k_name),
-        );
+        let rate_idx = *self
+            .rate_index
+            .get(k_name)
+            .unwrap_or_else(|| panic!("unknown rate constant {k_name}"));
+        self.system
+            .reaction(reactants, products, RateLaw::mass_action(k_name));
         let mut s_col: Vec<(usize, f64)> = Vec::new();
         for &(s, nu) in products {
             bump(&mut s_col, s, nu);
@@ -163,10 +166,7 @@ impl DifferentiableNetwork {
         // epsilon-guarded log: species may legitimately sit at zero
         const EPS: f64 = 1e-12;
         let lny = log(&add(y, &Tensor::from_typed(vec![EPS])));
-        let logits = tpt_autograd::matmul(
-            &Tensor::from_typed(h).reshape(&[m, n]).unwrap(),
-            &lny,
-        );
+        let logits = tpt_autograd::matmul(&Tensor::from_typed(h).reshape(&[m, n]).unwrap(), &lny);
         let flux = mul(&exp(&logits), &self.rates);
         // S [n, m]
         let smat = mat(n, m, |i, j| {
@@ -257,14 +257,22 @@ mod tests {
             &y1,
         );
         let _ = sel;
-        tpt_autograd::backward_seeded(&target, &Tensor::from_typed(vec![1.0]).reshape(&[1, 1]).unwrap());
+        tpt_autograd::backward_seeded(
+            &target,
+            &Tensor::from_typed(vec![1.0]).reshape(&[1, 1]).unwrap(),
+        );
         let g = net.rates.grad().unwrap().to_vec::<f64>().unwrap()[0];
         let h = 0.05;
         let fd = (run(1.0 + h) - run(1.0 - h)) / (2.0 * h);
         // analytic: B(T) = 1 − e^{−kT} → dB/dk = T e^{−kT}
         let analytic = 1.0 * (-1.0_f64).exp();
-        assert!((g - analytic).abs() < 5e-3, "tape {g} vs analytic {analytic}");
-        assert!((fd - analytic).abs() < 5e-3, "fd {fd} vs analytic {analytic}");
+        assert!(
+            (g - analytic).abs() < 5e-3,
+            "tape {g} vs analytic {analytic}"
+        );
+        assert!(
+            (fd - analytic).abs() < 5e-3,
+            "fd {fd} vs analytic {analytic}"
+        );
     }
 }
-

@@ -160,7 +160,7 @@ fn ggml_dtype(t: u32) -> Result<DType, HubError> {
         other => {
             return Err(HubError::UnknownDtype(format!(
                 "gguf dtype {other} (this quantization format is not supported)"
-            )))
+            )));
         }
     })
 }
@@ -259,7 +259,7 @@ fn dtype_to_ggml(d: DType) -> Result<u32, HubError> {
             return Err(HubError::UnknownDtype(format!(
                 "{} not representable in gguf",
                 d.name()
-            )))
+            )));
         }
     })
 }
@@ -336,7 +336,13 @@ impl GgufFile {
             let offset = r.u64()?;
             // GGUF dims are fastest-first; tpt-tensor is row-major (slowest first)
             let shape: Vec<usize> = dims.iter().rev().copied().collect();
-            tensors.push(GgufTensorInfo { name, shape, dtype, ggml_type, offset });
+            tensors.push(GgufTensorInfo {
+                name,
+                shape,
+                dtype,
+                ggml_type,
+                offset,
+            });
         }
 
         // data section begins at the next alignment boundary
@@ -355,13 +361,20 @@ impl GgufFile {
     /// Materialize one stored tensor. Quantized tensors (Q4_0/Q5_0/Q8_0)
     /// dequantize-on-load to `F32`.
     pub fn load_tensor(&self, info: &GgufTensorInfo) -> Result<Tensor, HubError> {
-        let numel: usize = info.shape.iter().product();
-        let start = self.data_start + info.offset as usize;
+        let numel: usize = info
+            .shape
+            .iter()
+            .try_fold(1usize, |a, b| a.checked_mul(*b))
+            .ok_or(HubError::OffsetOutOfRange)?;
+        let start = self
+            .data_start
+            .checked_add(info.offset as usize)
+            .ok_or(HubError::OffsetOutOfRange)?;
 
         if is_quantized(info.ggml_type) {
             let bb = quant_block_bytes(info.ggml_type)
                 .ok_or_else(|| HubError::UnknownDtype(format!("ggml {}", info.ggml_type)))?;
-            if numel % 32 != 0 {
+            if !numel.is_multiple_of(32) {
                 return Err(HubError::OffsetOutOfRange);
             }
             let blocks = numel / 32;
@@ -474,7 +487,7 @@ pub fn save_gguf(
                     _ => {
                         return Err(HubError::UnknownDtype(
                             "gguf-writer: empty or nested array metadata".into(),
-                        ))
+                        ));
                     }
                 };
                 out.extend_from_slice(&elem_ty.to_le_bytes());
@@ -521,7 +534,7 @@ pub fn save_gguf(
         data.extend_from_slice(t.as_bytes());
     }
     // align the data-section start
-    while out.len() % alignment != 0 {
+    while !out.len().is_multiple_of(alignment) {
         out.push(0);
     }
     out.extend_from_slice(&data);
@@ -660,7 +673,12 @@ mod tests {
         for i in 0..16 {
             let expect_lo = 2.0 * ((i % 16) as f32 - 8.0);
             assert!((v[i] - expect_lo).abs() < 1e-6, "v[{i}]={}", v[i]);
-            assert!((v[i + 16] - expect_lo).abs() < 1e-6, "v[{}]={}", i + 16, v[i + 16]);
+            assert!(
+                (v[i + 16] - expect_lo).abs() < 1e-6,
+                "v[{}]={}",
+                i + 16,
+                v[i + 16]
+            );
         }
     }
 
@@ -685,11 +703,14 @@ mod tests {
             ("f", GgufValue::F64(2.5)),
             ("b", GgufValue::Bool(true)),
             ("s", GgufValue::Str("hello".into())),
-            ("arr", GgufValue::Array(vec![
-                GgufValue::U32(1),
-                GgufValue::U32(2),
-                GgufValue::U32(3),
-            ])),
+            (
+                "arr",
+                GgufValue::Array(vec![
+                    GgufValue::U32(1),
+                    GgufValue::U32(2),
+                    GgufValue::U32(3),
+                ]),
+            ),
         ];
         let buf = save_gguf(&[("t", &t)], &meta).unwrap();
         let file = GgufFile::parse(&buf).unwrap();

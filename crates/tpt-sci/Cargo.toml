@@ -6,7 +6,7 @@ license.workspace = true
 description = "Differentiable scientific computing: ODE integration, FEA linear solves, and physics-informed neural networks with gradients end-to-end"
 readme = "README.md"
 keywords = ["ode", "fea", "pinn", "scientific-computing", "physics"]
-categories = ["science", "mathematics", "simulation"]
+categories = ["science", "algorithms"]
 
 [dependencies]
 tpt-tensor = { workspace = true }

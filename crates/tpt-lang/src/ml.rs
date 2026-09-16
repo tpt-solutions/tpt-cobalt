@@ -18,8 +18,8 @@
 use std::sync::{Arc, Mutex};
 
 use tpt_autograd::backward;
-use tpt_ml::optim::{step_attached, Optimizer};
-use tpt_ml::{loss, Module};
+use tpt_ml::optim::{Optimizer, step_attached};
+use tpt_ml::{Module, loss};
 use tpt_tensor::Tensor;
 
 use crate::interp::Interpreter;
@@ -67,7 +67,11 @@ pub fn install(interp: &mut Interpreter) {
     interp.register_native("mlp", |args| {
         let dims: Vec<usize> = args
             .iter()
-            .map(|v| v.as_num().map(|x| x as usize).ok_or("mlp() takes layer sizes"))
+            .map(|v| {
+                v.as_num()
+                    .map(|x| x as usize)
+                    .ok_or("mlp() takes layer sizes")
+            })
             .collect::<Result<_, _>>()?;
         if dims.len() < 2 {
             return Err("mlp(in, hidden..., out) needs at least 2 sizes".into());
@@ -94,11 +98,8 @@ pub fn install(interp: &mut Interpreter) {
         if nums.len() != 3 {
             return Err("transformer(d_model, heads, d_ff) requires 3 arguments".into());
         }
-        let block = tpt_ml::TransformerBlock::new(
-            nums[0] as usize,
-            nums[1] as usize,
-            nums[2] as usize,
-        );
+        let block =
+            tpt_ml::TransformerBlock::new(nums[0] as usize, nums[1] as usize, nums[2] as usize);
         Ok(Value::Model(Arc::new(Mutex::new(ModelBox {
             model: Box::new(block),
             opt: None,
@@ -106,8 +107,15 @@ pub fn install(interp: &mut Interpreter) {
     });
 
     interp.register_native("predict", |args| {
-        let m = as_model(args.first().ok_or("predict(model, x) requires 2 arguments")?)?;
-        let x = as_tensor(args.get(1).ok_or("predict(model, x) requires 2 arguments")?, "x")?;
+        let m = as_model(
+            args.first()
+                .ok_or("predict(model, x) requires 2 arguments")?,
+        )?;
+        let x = as_tensor(
+            args.get(1)
+                .ok_or("predict(model, x) requires 2 arguments")?,
+            "x",
+        )?;
         let guard = m.lock().unwrap();
         Ok(Value::Tensor(guard.model.forward(&x)))
     });
@@ -138,7 +146,9 @@ pub fn install(interp: &mut Interpreter) {
         }
         // split borrows: optimizer and model are separate fields
         let ModelBox { model, opt } = &mut *guard;
-        opt.as_mut().map(|o| o.set_lr(lr));
+        if let Some(o) = opt.as_mut() {
+            o.set_lr(lr)
+        }
         let mut params = model.parameters();
         params = step_attached(opt.as_mut().unwrap(), params);
         model.set_parameters(params);
@@ -162,14 +172,8 @@ mod tests {
     fn script_trains_mlp_on_synthetic_regression() {
         let mut it = Interpreter::new();
         // batch of 4 training pairs around y = 2x + 1
-        it.set(
-            "xs",
-            f64_tensor(&[0.1, 0.4, 0.7, 0.9], &[4, 1]),
-        );
-        it.set(
-            "ys",
-            f64_tensor(&[1.2, 1.8, 2.4, 2.8], &[4, 1]),
-        );
+        it.set("xs", f64_tensor(&[0.1, 0.4, 0.7, 0.9], &[4, 1]));
+        it.set("ys", f64_tensor(&[1.2, 1.8, 2.4, 2.8], &[4, 1]));
         let src = "
 let net = mlp(1, 16, 1)
 let first = train_step(net, xs, ys, 0.05)
@@ -198,10 +202,7 @@ last
     }
 
     fn eval_predict(it: &mut Interpreter) -> Vec<f64> {
-        let v = it
-            .run("predict(net, xs)")
-            .expect("predict failed")
-            .unwrap();
+        let v = it.run("predict(net, xs)").expect("predict failed").unwrap();
         match v {
             Value::Tensor(t) => t.to_vec::<f64>().unwrap(),
             other => panic!("expected tensor, got {other:?}"),

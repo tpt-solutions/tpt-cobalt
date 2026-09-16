@@ -4,13 +4,15 @@ use std::sync::Arc;
 
 use crate::array::ArrayRef;
 use crate::codec::{decode_array, encode_array};
-use crate::datatypes::{read_u32, DataType, Schema, SchemaRef};
+use crate::datatypes::{DataType, Schema, SchemaRef, read_u32};
 
 /// Return a copied sub-window `[offset, offset+length)` of an array.
-pub(crate) fn slice_array(arr: &dyn crate::array::Array, offset: usize, length: usize) -> crate::array::ArrayRef {
-    use crate::array::{
-        Array, ArrayRef, BinaryArray, BooleanArray, PrimitiveArray, StringArray,
-    };
+pub(crate) fn slice_array(
+    arr: &dyn crate::array::Array,
+    offset: usize,
+    length: usize,
+) -> crate::array::ArrayRef {
+    use crate::array::{ArrayRef, BinaryArray, PrimitiveArray, StringArray};
     use std::sync::Arc;
     macro_rules! prim {
         ($t:ty) => {{
@@ -34,7 +36,12 @@ pub(crate) fn slice_array(arr: &dyn crate::array::Array, offset: usize, length: 
                 .as_any()
                 .downcast_ref::<StringArray>()
                 .expect("dtype mismatch");
-            let vs = a.iter().skip(offset).take(length).map(str::to_string).collect();
+            let vs = a
+                .iter()
+                .skip(offset)
+                .take(length)
+                .map(str::to_string)
+                .collect();
             Arc::new(StringArray::new(vs))
         }
         DataType::Binary => {
@@ -42,7 +49,12 @@ pub(crate) fn slice_array(arr: &dyn crate::array::Array, offset: usize, length: 
                 .as_any()
                 .downcast_ref::<BinaryArray>()
                 .expect("dtype mismatch");
-            let vs = a.iter().skip(offset).take(length).map(<[u8]>::to_vec).collect();
+            let vs = a
+                .iter()
+                .skip(offset)
+                .take(length)
+                .map(<[u8]>::to_vec)
+                .collect();
             Arc::new(BinaryArray::new(vs))
         }
     }
@@ -101,10 +113,7 @@ impl RecordBatch {
     }
 
     pub fn column_by_name(&self, name: &str) -> Option<&ArrayRef> {
-        self.schema
-            .index_of(name)
-            .ok()
-            .map(|i| &self.columns[i])
+        self.schema.index_of(name).ok().map(|i| &self.columns[i])
     }
 
     pub fn num_columns(&self) -> usize {
